@@ -30,8 +30,39 @@ use sp_runtime::traits::{AccountIdLookup, BlakeTwo256};
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 use sp_std::marker::PhantomData;
-
+use frame_system::pallet_prelude::BlockNumberFor;
+use frame_system::{
+    self as system,
+    offchain::{
+        AppCrypto,
+        CreateSignedTransaction,
+        SendSignedTransaction,
+        SendUnsignedTransaction,
+        //  SignedPayload,
+        Signer,
+        SigningTypes,
+        SubmitTransaction,
+    },
+    // weights::constants::{
+    //     BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND,
+    // },
+    // Pallet,
+    // Call,
+};
+pub use pallet_nostr;
+use pallet_nostr::{crypto, Call as NostrCall};
 use crate::*;
+use sp_runtime::generic::Era;
+use sp_runtime::traits;
+pub use pallet_balances;
+use pallet_balances::AccountData;
+use frame_support::pallet_prelude::TypeInfo;
+use frame_support::pallet_prelude::{MaxEncodedLen, MaybeSerializeDeserialize, Member};
+use frame_support::Parameter;
+use parity_scale_codec::{Codec, Encode};
+use scale_info::prelude::fmt::Debug;
+use sp_runtime::traits::AtLeast32BitUnsigned;
+use sp_runtime::FixedPointOperand;
 
 // Configure FRAME pallets to include in runtime.
 
@@ -126,6 +157,10 @@ impl frame_system::Config for Runtime {
     type OnKilledAccount = ();
     /// The data to be stored in an account.
     type AccountData = ();
+    // type AccountData = AccountData<u128>;
+    
+    // type AccountData = AccountData<u128>;
+
     /// Weight information for the extrinsics of this pallet.
     type SystemWeightInfo = ();
     /// This is used as an identifier of the chain. 42 is the generic substrate prefix.
@@ -206,3 +241,129 @@ impl<T: pallet_aura::Config> OnTimestampSet<T::Moment> for ConsensusOnTimestampS
         <pallet_aura::Pallet<T> as OnTimestampSet<T::Moment>>::on_timestamp_set(moment)
     }
 }
+
+
+parameter_types! {
+    // NOstr
+    pub const UnsignedPriorityNostr:u64= u64::MAX;
+    pub const UnsignedInterval: u32=u32::MIN;
+    pub const GracePeriod: u32=u32::MIN;
+    pub const MaxPrices: u32 =u32::MAX;
+}
+
+
+impl pallet_nostr::Config for Runtime {
+    type AuthorityId = pallet_nostr::crypto::TestAuthId;
+    type RuntimeEvent = RuntimeEvent;
+    type UnsignedPriority = UnsignedPriorityNostr;
+    type UnsignedInterval = UnsignedInterval;
+    type GracePeriod = GracePeriod;
+    type MaxPrices = MaxPrices;
+    // type AccountId = AccountId ;
+    // type Balance = Balance;
+    // type MinBalance = Balance;
+
+}
+impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
+where
+    RuntimeCall: From<LocalCall>,
+{
+    fn create_transaction<C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>>(
+        call: RuntimeCall,
+        public: <Signature as traits::Verify>::Signer,
+        account: AccountId,
+        // nonce: Nonce,
+        nonce: u32,
+    ) -> Option<(
+        RuntimeCall,
+        <UncheckedExtrinsic as traits::Extrinsic>::SignaturePayload,
+    )> {
+        // let tip = 0;
+
+        // take the biggest period possible.
+        let period = BlockHashCount::get()
+            .checked_next_power_of_two()
+            .map(|c| c / 2)
+            .unwrap_or(2) as u64;
+        // The `System::block_number` is initialized with `n+1`,
+        // so the actual block number is `n`.
+        // .saturating_sub(1);
+        let current_block = (System::block_number() -1) as u64;
+        let era = Era::mortal(period, current_block);
+        let extra = (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckEra::<Runtime>::from(era),
+            frame_system::CheckNonce::<Runtime>::from(nonce),
+            frame_system::CheckWeight::<Runtime>::new(),
+            // TODO add tx payment
+            // pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+        );
+        let raw_payload = SignedPayload::new(call, extra)
+            .map_err(|e| {
+                log::warn!("Unable to create signed payload: {:?}", e);
+            })
+            .ok()?;
+        let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
+        // let address = Indices::unlookup(account);
+        let address = account;
+        let (call, extra, _) = raw_payload.deconstruct();
+        // Some((call, (address, signature, extra)))
+        Some((call, (sp_runtime::MultiAddress::Id(address), signature, extra)))
+    }
+}
+
+impl frame_system::offchain::SigningTypes for Runtime {
+    type Public = <Signature as traits::Verify>::Signer;
+    type Signature = Signature;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+where
+    RuntimeCall: From<C>,
+{
+    type Extrinsic = UncheckedExtrinsic;
+    type OverarchingCall = RuntimeCall;
+}
+
+
+// impl pallet_balances::Config for Runtime {
+//     type MaxLocks = ConstU32<50>;
+//     type MaxReserves = ();
+//     type ReserveIdentifier = [u8; 8];
+//     /// The type for recording an account's balance.
+//     type Balance = Balance;
+//     /// The ubiquitous event type.
+//     type RuntimeEvent = RuntimeEvent;
+//     type DustRemoval = ();
+//     type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
+//     type AccountStore = System;
+//     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+//     type FreezeIdentifier = ();
+//     type MaxFreezes = ();
+//     type RuntimeHoldReason = ();
+//     type RuntimeFreezeReason = ();
+//     type MaxHolds = ();
+// }
+
+// impl pallet_balances::Config for Runtime {
+//     type MaxLocks = ConstU32<50>;
+//     type MaxReserves = ();
+//     type ReserveIdentifier = [u8; 8];
+//     /// The type for recording an account's balance.
+//     type Balance = Balance;
+//     /// The ubiquitous event type.
+//     type RuntimeEvent = RuntimeEvent;
+//     type DustRemoval = ();
+//     type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
+//     type AccountStore = System;
+//     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+//     type FreezeIdentifier = ();
+//     type MaxFreezes = ();
+//     type RuntimeHoldReason = ();
+//     type RuntimeFreezeReason = ();
+//     type MaxHolds = ();
+// }
+

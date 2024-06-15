@@ -66,9 +66,14 @@ pallet-starknet-runtime-api = { workspace = true }
 blockifier = { workspace = true }
 starknet_api = { workspace = true }
 
+pallet-nostr= { workspace=true }
+pallet-balances= { workspace=true}  
+
 [features]
 default = ["std"]
-std = []
+std = [
+  "pallet-nostr/std",
+]
 try-runtime = [
   "pallet-timestamp/try-runtime",
   "frame-try-runtime/try-runtime",

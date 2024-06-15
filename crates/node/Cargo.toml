@@ -57,6 +57,7 @@ sp-runtime = { workspace = true }
 sp-state-machine = { workspace = true }
 sp-statement-store = { workspace = true }
 sp-timestamp = { workspace = true }
+sp-keystore = { workspace = true, features = ["default"] }
 
 # These dependencies are used for the node template's RPCs
 jsonrpsee = { workspace = true, features = ["server"] }

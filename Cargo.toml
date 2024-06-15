@@ -29,6 +29,8 @@ members = [
   "starknet-rpc-test",
   "madara-test-runner",
   "starknet-test-utils",
+  "crates/pallets/nostr",
+
 ]
 # All previous except for `starknet-rpc-test`
 # We don't want `cargo test` to trigger its tests
@@ -269,3 +271,13 @@ async-lock = "3.1.0"
 rustc-hex = { version = "2.0.0" }
 itertools = "0.12.0"
 tempfile = "3.2"
+
+
+sp-keystore = { git = "https://github.com/massalabs/polkadot-sdk", branch = "release-polkadot-v1.3.0-std", default-features = false, features = [
+  "std",
+] }
+
+pallet-balances = { default-features = true, git = "https://github.com/massalabs/polkadot-sdk", branch = "release-polkadot-v1.3.0-std" }
+
+# WUW Pallets
+pallet-nostr = { path = "crates/pallets/nostr", default-features = false }
