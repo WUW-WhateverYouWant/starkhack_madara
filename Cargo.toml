@@ -277,7 +277,6 @@ sp-keystore = { git = "https://github.com/massalabs/polkadot-sdk", branch = "rel
   "std",
 ] }
 
-pallet-balances = { default-features = true, git = "https://github.com/massalabs/polkadot-sdk", branch = "release-polkadot-v1.3.0-std" }
 
 # WUW Pallets
 pallet-nostr = { path = "crates/pallets/nostr", default-features = false }

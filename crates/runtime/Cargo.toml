@@ -67,12 +67,13 @@ blockifier = { workspace = true }
 starknet_api = { workspace = true }
 
 pallet-nostr= { workspace=true }
-pallet-balances= { workspace=true}  
+pallet-balances = { default-features = false, git = "https://github.com/massalabs/polkadot-sdk", branch = "release-polkadot-v1.3.0-std" }
 
 [features]
 default = ["std"]
 std = [
   "pallet-nostr/std",
+  "pallet-balances/std",
 ]
 try-runtime = [
   "pallet-timestamp/try-runtime",

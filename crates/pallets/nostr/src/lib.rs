@@ -117,18 +117,6 @@ pub mod crypto {
     }
 }
 
-// Order data
-// pub struct OrderData<AccountId, Balance> {
-// #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default)]
-
-// pub struct NostrData<AccountId> {
-//     id: u32,
-//     pubkey: String,
-//     kind:u8,
-//     content:String,
-//     tags:Vec<Vec<String>,
-// }
-// #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, MaxEncodedLen, TypeInfo)]
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, parity_scale_codec::MaxEncodedLen, TypeInfo)]
 pub struct NostrEventData {
     id: [u8; 20],
@@ -160,8 +148,6 @@ pub mod pallet {
     #[pallet::pallet]
     pub struct Pallet<T>(_);
 
-    // #[frame::pallet]
-    // pub struct Pallet<T>(_);
     /// This pallet's configuration trait
     #[pallet::config]
     pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config {
@@ -345,6 +331,24 @@ pub mod pallet {
             <NextUnsignedAt<T>>::put(current_block + T::UnsignedInterval::get());
             Ok(().into())
         }
+
+
+        // #[pallet::call_index(3)]
+        // #[pallet::weight({0})]
+        // pub fn save_events(
+        //     origin: OriginFor<T>,
+        //     price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
+        //     _signature: T::Signature,
+        // ) -> DispatchResultWithPostInfo {
+        //     // This ensures that the function can only be called via unsigned transaction.
+        //     ensure_none(origin)?;
+        //     // Add the price to the on-chain list, but mark it as coming from an empty address.
+        //     Self::add_price(None, price_payload.price);
+        //     // now increment the block number at which we expect next unsigned transaction.
+        //     let current_block = <system::Pallet<T>>::block_number();
+        //     <NextUnsignedAt<T>>::put(current_block + T::UnsignedInterval::get());
+        //     Ok(().into())
+        // }
     }
 
     /// Events for the pallet.

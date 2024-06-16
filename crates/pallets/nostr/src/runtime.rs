@@ -18,15 +18,19 @@ use frame_system::pallet_prelude::OriginFor;
 
 sp_api::decl_runtime_apis! {
 
-	pub trait NostrTrait {
-		fn average_price() -> Option<u32>;
-		fn submit_price(origin: OriginFor<T>, price: u32 );
-		fn submit_price_unsigned(origin: OriginFor<T>,
-			_block_number: BlockNumberFor<T>,
-			price: u32);
-		fn submit_price_unsigned_with_signed_payload(origin: OriginFor<T>,
-			price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
-			_signature: T::Signature);
-	}
+    pub trait NostrTrait {
+        // fn get_events() -> Option<T>;
+        fn average_price() -> Option<u32>;
+        fn submit_price(origin: OriginFor<T>, price: u32 );
+        fn submit_price_unsigned(origin: OriginFor<T>,
+            _block_number: BlockNumberFor<T>,
+            price: u32);
+        fn submit_price_unsigned_with_signed_payload(origin: OriginFor<T>,
+            price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
+            _signature: T::Signature);
+        fn save_events(origin: OriginFor<T>);
+
+           
+    }
 
 }

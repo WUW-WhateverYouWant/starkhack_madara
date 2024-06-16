@@ -63,7 +63,8 @@ use parity_scale_codec::{Codec, Encode};
 use scale_info::prelude::fmt::Debug;
 use sp_runtime::traits::AtLeast32BitUnsigned;
 use sp_runtime::FixedPointOperand;
-
+// use crate::pallet_nostr::Call;
+use crate::pallets::system::Call;
 // Configure FRAME pallets to include in runtime.
 
 // --------------------------------------
@@ -156,7 +157,8 @@ impl frame_system::Config for Runtime {
     /// What to do if an account is fully reaped from the system.
     type OnKilledAccount = ();
     /// The data to be stored in an account.
-    type AccountData = ();
+    // type AccountData = ();
+    type AccountData = AccountData<u128>;
     // type AccountData = AccountData<u128>;
     
     // type AccountData = AccountData<u128>;
@@ -250,7 +252,9 @@ parameter_types! {
     pub const GracePeriod: u32=u32::MIN;
     pub const MaxPrices: u32 =u32::MAX;
 }
-
+/// Payload data to be signed when making signed transaction from off-chain workers,
+///   inside `create_transaction` function.
+// pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
 
 impl pallet_nostr::Config for Runtime {
     type AuthorityId = pallet_nostr::crypto::TestAuthId;
@@ -329,24 +333,24 @@ where
 }
 
 
-// impl pallet_balances::Config for Runtime {
-//     type MaxLocks = ConstU32<50>;
-//     type MaxReserves = ();
-//     type ReserveIdentifier = [u8; 8];
-//     /// The type for recording an account's balance.
-//     type Balance = Balance;
-//     /// The ubiquitous event type.
-//     type RuntimeEvent = RuntimeEvent;
-//     type DustRemoval = ();
-//     type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
-//     type AccountStore = System;
-//     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-//     type FreezeIdentifier = ();
-//     type MaxFreezes = ();
-//     type RuntimeHoldReason = ();
-//     type RuntimeFreezeReason = ();
-//     type MaxHolds = ();
-// }
+impl pallet_balances::Config for Runtime {
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    /// The type for recording an account's balance.
+    type Balance = Balance;
+    /// The ubiquitous event type.
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ConstU128<EXISTENTIAL_DEPOSIT>;
+    type AccountStore = System;
+    type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
+    type MaxHolds = ();
+}
 
 // impl pallet_balances::Config for Runtime {
 //     type MaxLocks = ConstU32<50>;

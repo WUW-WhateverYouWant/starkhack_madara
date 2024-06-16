@@ -77,7 +77,7 @@ construct_runtime!(
         Grandpa: pallet_grandpa,
         // Include Starknet pallet.
         Starknet: pallet_starknet,
-        // Balances:pallet_balances,
+        Balances:pallet_balances,
         Nostr:pallet_nostr
     }
 );

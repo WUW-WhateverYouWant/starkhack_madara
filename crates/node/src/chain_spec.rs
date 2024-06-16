@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use madara_runtime::{AuraConfig, GrandpaConfig, RuntimeGenesisConfig, SealingMode, SystemConfig, WASM_BINARY};
+use madara_runtime::{
+    AuraConfig, BalancesConfig, GrandpaConfig, RuntimeGenesisConfig, SealingMode, SystemConfig, WASM_BINARY,
+};
 use mp_felt::Felt252Wrapper;
 use pallet_starknet::genesis_loader::{GenesisData, GenesisLoader, HexFelt};
 use sc_service::{BasePath, ChainType};
@@ -8,27 +10,19 @@ use serde::{Deserialize, Serialize};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_core::storage::Storage;
-use sp_core::{Pair, Public};
-use sp_state_machine::BasicExternalities;
-use sp_keystore;
-// use madara_runtime::BalancesConfig;
-use madara_runtime::AccountId;
-use madara_runtime::Signature;
+use sp_core::{sr25519, Pair, Public};
 use sp_runtime::AccountId32;
-use sp_core::sr25519;
-// use madara_runtime::BalancesConfig;
+use sp_state_machine::BasicExternalities;
 // /// Generate an account ID from seed.
 pub fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountId32
 where
-AccountId32: From<<TPublic::Pair as Pair>::Public>,
+    AccountId32: From<<TPublic::Pair as Pair>::Public>,
 {
-// AccountId32::from(get_from_seed::<TPublic>(seed)).into_account()
-AccountId32::from(get_from_seed::<TPublic>(seed))
-
+    // AccountId32::from(get_from_seed::<TPublic>(seed)).into_account()
+    AccountId32::from(get_from_seed::<TPublic>(seed))
 }
 
 pub fn get_endowed_accounts_with_balance() -> Vec<(AccountId32, u128)> {
-
     let accounts: Vec<AccountId32> = vec![
         get_account_id_from_seed::<sr25519::Public>("Alice"),
         get_account_id_from_seed::<sr25519::Public>("Bob"),
@@ -37,13 +31,12 @@ pub fn get_endowed_accounts_with_balance() -> Vec<(AccountId32, u128)> {
         get_account_id_from_seed::<sr25519::Public>("Alice//stash"),
     ];
     // @TODO genesis balance management
-    // let accounts_with_balance: Vec<(AccountId32, u128)> = accounts.iter().cloned().map(|k| (k, 1 << 60)).collect();
-    let accounts_with_balance: Vec<(AccountId32, u128)> = accounts.iter().cloned().map(|k| (k, 10_000)).collect();
+    let accounts_with_balance: Vec<(AccountId32, u128)> = accounts.iter().cloned().map(|k| (k, 1 << 60)).collect();
+    // let accounts_with_balance: Vec<(AccountId32, u128)> = accounts.iter().cloned().map(|k| (k,
+    // 10_000)).collect();
 
     accounts_with_balance
 }
-
-
 
 use crate::constants::DEV_CHAIN_ID;
 
@@ -112,7 +105,6 @@ pub fn development_config(sealing: SealingMode, base_path: BasePath) -> Result<D
                     // Initial PoA authorities
                     vec![authority_keys_from_seed("Alice")],
                     true,
-                    // get_endowed_accounts_with_balance(),
                 ),
                 sealing: sealing.clone(),
             }
@@ -171,7 +163,6 @@ pub fn local_testnet_config(base_path: BasePath, chain_id: &str) -> Result<Chain
                 // Intended to be only 2
                 vec![authority_keys_from_seed("Alice"), authority_keys_from_seed("Bob")],
                 true,
-                // get_endowed_accounts_with_balance(),
             )
         },
         // Bootnodes
@@ -204,7 +195,6 @@ fn testnet_genesis(
     wasm_binary: &[u8],
     initial_authorities: Vec<(AuraId, GrandpaId)>,
     _enable_println: bool,
-    // endowed_accounts:Vec<(AccountId,u128)>
 ) -> RuntimeGenesisConfig {
     let starknet_genesis_config: madara_runtime::pallet_starknet::GenesisConfig<_> = genesis_loader.into();
 
@@ -223,8 +213,20 @@ fn testnet_genesis(
         },
         /// Starknet Genesis configuration.
         starknet: starknet_genesis_config,
-        // balances:BalancesConfig {
-        //     balances: endowed_accounts
-        // },
+        balances: BalancesConfig {
+            // balances: get_endowed_accounts_with_balance()
+            // balances: endowed_accounts.iter().cloned().map(|k|(k, 1 << 60)).collect(),
+            balances: vec![
+                (get_account_id_from_seed::<sr25519::Public>("Alice"), 1 << 60),
+                (get_account_id_from_seed::<sr25519::Public>("Bob"), 1 << 60),
+            ],
+        },
+        // pallet_balances: Some(BalancesConfig {
+        // 	balances: endowed_accounts
+        // 		.iter()
+        // 		.cloned()
+        // 		.map(|k| (k, 1 << 60))
+        // 		.collect(),
+        // }),
     }
 }
