@@ -44,20 +44,20 @@
 //! one unsigned transaction floating in the network.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+use std::time::Duration as StdDuration;
+
 use frame_support::pallet_prelude::{
     InvalidTransaction as InvalidTx, TransactionValidity as TXValidity, ValidTransaction,
 };
 use frame_support::traits::Get;
-use frame_system::{
-    self as system,
-    // Pallet,
-    offchain::{
-        AppCrypto, CreateSignedTransaction, SendSignedTransaction, SendUnsignedTransaction, SignedPayload, Signer,
-        SigningTypes, SubmitTransaction,
-    },
-    pallet_prelude::BlockNumberFor,
+use frame_system::offchain::{
+    AppCrypto, CreateSignedTransaction, SendSignedTransaction, SendUnsignedTransaction, SignedPayload, Signer,
+    SigningTypes, SubmitTransaction,
 };
+use frame_system::pallet_prelude::BlockNumberFor;
+use frame_system::{self as system};
 use lite_json::json::JsonValue;
+use nostr_sdk::prelude::{Client, Event as EventNostr, EventId, Filter, Keys, Kind, PublicKey};
 // use lite_json::String;
 pub use parity_scale_codec::{Decode, Encode};
 use sp_core::crypto::KeyTypeId;
@@ -65,6 +65,7 @@ use sp_runtime::{
     offchain::{
         http,
         storage::{MutateStorageError, StorageRetrievalError, StorageValueRef},
+        storage_lock::{StorageLock, Time},
         Duration,
     },
 
@@ -73,10 +74,6 @@ use sp_runtime::{
     RuntimeDebug,
 };
 use sp_std::vec::Vec;
-use sp_version::RuntimeVersion;
-// use sp_runtime::traits::AtLeast32BitUnsigned;
-// use frame_support::Parameter;
-// use frame_support::pallet_prelude::Member;
 
 #[cfg(test)]
 mod tests;
@@ -97,7 +94,7 @@ pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"deso");
 pub mod crypto {
     use scale_info::prelude::string::String;
     use sp_core::sr25519::Signature as Sr25519Signature;
-    use sp_runtime::app_crypto::{app_crypto, sr25519, AppPublic, AppSignature, RuntimeAppPublic, RuntimePublic};
+    use sp_runtime::app_crypto::{app_crypto, sr25519};
     use sp_runtime::traits::Verify;
     use sp_runtime::{MultiSignature, MultiSigner};
 
@@ -117,15 +114,26 @@ pub mod crypto {
     }
 }
 
+// #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default,
+// parity_scale_codec::MaxEncodedLen, TypeInfo)] pub struct NostrEventData {
+//     id: [u8; 20],
+//     pubkey: [u8; 20],
+//     kind: u8,
+//     content: [u8; 20],
+//     // tags: Vec<Vec<u8>>,
+//     tags: [u8; 20],
+// }
+
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, Default, parity_scale_codec::MaxEncodedLen, TypeInfo)]
 pub struct NostrEventData {
     id: [u8; 20],
     pubkey: [u8; 20],
     kind: u8,
     content: [u8; 20],
-    // tags: Vec<Vec<u8>>,
-    tags:[u8; 20],
+    tags: [u8; 20],
 }
+
+
 
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -133,13 +141,8 @@ use scale_info::TypeInfo;
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::tokens::Balance;
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{AccountIdConversion, IdentifyAccount, Verify};
     use sp_runtime::MultiSignature;
-    use starknet_api::hash::{StarkFelt, StarkHash};
-    use starknet_api::state::StorageKey;
-    use starknet_api::transaction::{Calldata, Event as StarknetEvent, Fee, MessageToL1, TransactionHash};
 
     pub type Signature = MultiSignature;
 
@@ -237,6 +240,21 @@ pub mod pallet {
             let average: Option<u32> = Self::average_price();
             log::debug!("Current price: {:?}", average);
 
+            log::info!("Nostr saved event");
+
+            let mut lock = StorageLock::<Time>::new(b"offchain-worker::lock");
+
+            if let Ok(_guard) = lock.try_lock() {
+                // Self::fetch_events(block_number);
+                Self::fetch_async_events(block_number);
+
+                // // Only one offchain worker can execute this code at a time
+                // if let Ok(data) = Self::fetch_from_remote() {
+                //     // Process the data
+                // }
+                // }
+            }
+
             // For this example we are going to send both signed and unsigned transactions
             // depending on the block number.
             // Usually it's enough to choose one or the other.
@@ -332,22 +350,18 @@ pub mod pallet {
             Ok(().into())
         }
 
-
         // #[pallet::call_index(3)]
         // #[pallet::weight({0})]
         // pub fn save_events(
         //     origin: OriginFor<T>,
         //     price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
         //     _signature: T::Signature,
-        // ) -> DispatchResultWithPostInfo {
-        //     // This ensures that the function can only be called via unsigned transaction.
-        //     ensure_none(origin)?;
-        //     // Add the price to the on-chain list, but mark it as coming from an empty address.
-        //     Self::add_price(None, price_payload.price);
-        //     // now increment the block number at which we expect next unsigned transaction.
-        //     let current_block = <system::Pallet<T>>::block_number();
-        //     <NextUnsignedAt<T>>::put(current_block + T::UnsignedInterval::get());
-        //     Ok(().into())
+        // ) -> DispatchResultWithPostInfo { // This ensures that the function can only be called via
+        //   unsigned transaction. ensure_none(origin)?; // Add the price to the on-chain list, but mark it
+        //   as coming from an empty address. Self::add_price(None, price_payload.price); // now increment
+        //   the block number at which we expect next unsigned transaction. let current_block =
+        //   <system::Pallet<T>>::block_number(); <NextUnsignedAt<T>>::put(current_block +
+        //   T::UnsignedInterval::get()); Ok(().into())
         // }
     }
 
@@ -422,8 +436,12 @@ pub mod pallet {
     // }
 
     #[pallet::storage]
-    #[pallet::getter(fn orderbook)]
+    #[pallet::getter(fn nostr_events)]
     pub(super) type NostrEventStore<T: Config> = StorageValue<_, NostrEventData, ValueQuery>;
+
+    #[pallet::storage]
+    #[pallet::getter(fn nostr_users)]
+    pub(super) type NostrUsers<T: Config> = StorageValue<_, NostrEventData, ValueQuery>;
 }
 
 /// Payload used by this example crate to hold price
@@ -464,7 +482,7 @@ impl<T: Config> Pallet<T> {
         // Start off by creating a reference to Local Storage value.
         // Since the local storage is common for all offchain workers, it's a good practice
         // to prepend your entry with the module name.
-        let val = StorageValueRef::persistent(b"orderbook::last_send");
+        let val = StorageValueRef::persistent(b"deso::last_send");
         // The Local Storage is persisted and shared between runs of the offchain workers,
         // and offchain workers may run concurrently. We can use the `mutate` function, to
         // write a storage entry in an atomic fashion. Under the hood it uses `compare_and_set`
@@ -519,6 +537,22 @@ impl<T: Config> Pallet<T> {
         }
     }
 
+    fn fetch_async_events(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        log::info!("fetch async events");
+        // Call the async fetch function using a synchronous block_on
+        let response = Self::block_on(Self::fetch_events(block_number));
+        match response {
+            Ok(data) => Ok(()),
+            Err(_) => Err("Failed to fetch data"),
+        }
+    }
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        use tokio::runtime::Runtime;
+        let rt = Runtime::new().unwrap();
+        rt.block_on(future)
+    }
+
     /// A helper function to fetch the price and send signed transaction.
     fn fetch_price_and_send_signed() -> Result<(), &'static str> {
         let signer = Signer::<T, T::AuthorityId>::all_accounts();
@@ -546,6 +580,114 @@ impl<T: Config> Pallet<T> {
                 Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
         }
+
+        Ok(())
+    }
+
+    /// A helper function to fetch the price, sign payload and send an unsigned transaction
+    async fn fetch_events(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        log::info!("fetch_events");
+        let my_keys = Keys::generate();
+        let client = Client::new(my_keys);
+        // let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
+        client.add_relay("wss://nostr.joyboy.community").await;
+
+        client.connect().await;
+        // Get events from all connected relays
+        // let filter = Filter::new().author(public_key).kind(Kind::Metadata);
+        let filter = Filter::new().kind(Kind::Metadata);
+
+        let events_users = client
+            .get_events_of(
+                vec![filter],
+                Some(StdDuration::from_secs(10)), // Duration::from_millis(2_000)
+            )
+            .await;
+        log::info!("{events_users:#?}");
+        // println!("{events_users:#?}");
+
+        let filte_notes = Filter::new().kind(Kind::TextNote);
+        let events = client
+            .get_events_of(
+                vec![filte_notes],
+                Some(StdDuration::from_secs(10)), // Duration::from_millis(2_000)
+            )
+            .await;
+        log::info!("{events:#?}");
+
+        //      // We want to keep the offchain worker execution time reasonable, so we set a hard-coded
+        // // deadline to 2s to complete the external call.
+        // // You can also wait indefinitely for the response, however you may still get a timeout
+        // // coming from the host machine.
+        // let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
+        // // Initiate an external HTTP GET request.
+        // // This is using high-level wrappers from `sp_runtime`, for the low-level calls that
+        // // you can find in `sp_io`. The API is trying to be similar to `request`, but
+        // // since we are running in a custom WASM execution environment we can't simply
+        // // import the library here.
+        // let request = http::Request::get("https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD");
+        // // We set the deadline for sending of the request, note that awaiting response can
+        // // have a separate deadline. Next we send the request, before that it's also possible
+        // // to alter request headers or stream body content in case of non-GET requests.
+        // let pending = request.deadline(deadline).send().map_err(|_| http::Error::IoError)?;
+
+        // // The request is already being processed by the host, we are free to do anything
+        // // else in the worker (we can send multiple concurrent requests too).
+        // // At some point however we probably want to check the response though,
+        // // so we can block current thread and wait for it to finish.
+        // // Note that since the request is being driven by the host, we don't have to wait
+        // // for the request to have it complete, we will just not read the response.
+        // let response = pending.try_wait(deadline).map_err(|_| http::Error::DeadlineReached)??;
+        // // Let's check the status code before we proceed to reading the response.
+        // if response.code != 200 {
+        //     log::warn!("Unexpected status code: {}", response.code);
+        //     return Err(http::Error::Unknown);
+        // }
+
+        // // Next we want to fully read the response body and collect it to a vector of bytes.
+        // // Note that the return object allows you to read the body in chunks as well
+        // // with a way to control the deadline.
+        // let body = response.body().collect::<Vec<u8>>();
+
+        // // Create a str slice from the body.
+        // let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
+        //     log::warn!("No UTF8 body");
+        //     http::Error::Unknown
+        // })?;
+
+        // let price = match Self::parse_price(body_str) {
+        //     Some(price) => Ok(price),
+        //     None => {
+        //         log::warn!("Unable to extract price from the response: {:?}", body_str);
+        //         Err(http::Error::Unknown)
+        //     }
+        // }?;
+
+        // log::warn!("Got price: {} cents", price);
+
+        // Ok(price)
+        // Make sure we don't fetch the price if unsigned transaction is going to be rejected
+        // anyway.
+        // let next_unsigned_at = <NextUnsignedAt<T>>::get();
+        // if next_unsigned_at > block_number {
+        //     return Err("Too early to send unsigned transaction");
+        // }
+
+        // // Make an external HTTP request to fetch the current price.
+        // // Note this call will block until response is received.
+        // let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
+
+        // // -- Sign using any account
+        // let (_, result) = Signer::<T, T::AuthorityId>::any_account()
+        //     .send_unsigned_transaction(
+        //         |account| PricePayload { price, block_number, public: account.public.clone() },
+        //         |payload, signature| Call::submit_price_unsigned_with_signed_payload {
+        //             price_payload: payload,
+        //             signature,
+        //         },
+        //     )
+        //     .ok_or("No local accounts accounts available.")?;
+        // result.map_err(|()| "Unable to submit transaction")?;
 
         Ok(())
     }

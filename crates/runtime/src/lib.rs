@@ -65,7 +65,6 @@ pub use types::*;
 // For `format!`
 extern crate alloc;
 pub use pallet_nostr;
-use pallet_nostr::Event as NostrEvent;
 pub use pallet_balances;
 pub use frame_support::__private::log;
 // Create the runtime by composing the FRAME pallets that were previously configured.

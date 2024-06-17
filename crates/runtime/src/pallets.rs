@@ -30,41 +30,17 @@ use sp_runtime::traits::{AccountIdLookup, BlakeTwo256};
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 use sp_std::marker::PhantomData;
-use frame_system::pallet_prelude::BlockNumberFor;
 use frame_system::{
     self as system,
-    offchain::{
-        AppCrypto,
-        CreateSignedTransaction,
-        SendSignedTransaction,
-        SendUnsignedTransaction,
-        //  SignedPayload,
-        Signer,
-        SigningTypes,
-        SubmitTransaction,
-    },
-    // weights::constants::{
-    //     BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND,
-    // },
-    // Pallet,
-    // Call,
 };
 pub use pallet_nostr;
-use pallet_nostr::{crypto, Call as NostrCall};
 use crate::*;
 use sp_runtime::generic::Era;
 use sp_runtime::traits;
 pub use pallet_balances;
 use pallet_balances::AccountData;
-use frame_support::pallet_prelude::TypeInfo;
-use frame_support::pallet_prelude::{MaxEncodedLen, MaybeSerializeDeserialize, Member};
-use frame_support::Parameter;
-use parity_scale_codec::{Codec, Encode};
-use scale_info::prelude::fmt::Debug;
-use sp_runtime::traits::AtLeast32BitUnsigned;
-use sp_runtime::FixedPointOperand;
-// use crate::pallet_nostr::Call;
-use crate::pallets::system::Call;
+use parity_scale_codec::{ Encode};
+
 // Configure FRAME pallets to include in runtime.
 
 // --------------------------------------

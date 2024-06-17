@@ -47,7 +47,9 @@ mp-storage = { workspace = true, default-features = true }
 pallet-starknet-runtime-api = { workspace = true }
 starknet_api = { workspace = true, default-features = true }
 pallet-starknet = { workspace = true, default-features = true }
-
+nostr = "0.32"
+nostr-sdk = "0.32"
+tokio="1.38.0"
 
 [features]
 default = [ "std" ]
