@@ -226,7 +226,7 @@ parameter_types! {
     pub const UnsignedPriorityNostr:u64= u64::MAX;
     pub const UnsignedInterval: u32=u32::MIN;
     pub const GracePeriod: u32=u32::MIN;
-    pub const MaxPrices: u32 =u32::MAX;
+    pub const MaxEventLen: u32 =u32::MAX;
 }
 /// Payload data to be signed when making signed transaction from off-chain workers,
 ///   inside `create_transaction` function.
@@ -238,7 +238,7 @@ impl pallet_nostr::Config for Runtime {
     type UnsignedPriority = UnsignedPriorityNostr;
     type UnsignedInterval = UnsignedInterval;
     type GracePeriod = GracePeriod;
-    type MaxPrices = MaxPrices;
+    type MaxEventLen = MaxEventLen;
     // type AccountId = AccountId ;
     // type Balance = Balance;
     // type MinBalance = Balance;

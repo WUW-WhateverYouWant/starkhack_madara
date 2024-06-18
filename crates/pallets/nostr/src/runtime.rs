@@ -15,6 +15,9 @@ mod tests;
 
 use frame_support::pallet_prelude::DispatchResult;
 use frame_system::pallet_prelude::OriginFor;
+use nostr_sdk::{
+    Event as EventNostr
+};
 
 sp_api::decl_runtime_apis! {
 
@@ -28,7 +31,7 @@ sp_api::decl_runtime_apis! {
         fn submit_price_unsigned_with_signed_payload(origin: OriginFor<T>,
             price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
             _signature: T::Signature);
-        fn save_events(origin: OriginFor<T>);
+        fn store_nostr_event(origin: OriginFor<T>, event_vec:Vec<u8>);
 
            
     }
