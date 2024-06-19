@@ -5,7 +5,7 @@ This pallet aims to enable solutions for a Nostr relayer decentralization, censo
 
 -[X] Fetch Events of the Joyboy relayer
 -[X] Save Events Notes in Storage pallet
--[] Save Users events in Storage pallet
+-[X] Save Users events in Storage pallet
 -[] Rockdb distributed Database for Joyboy relayer (maybe others?)
 
 -[] Fetch events of others relayers.

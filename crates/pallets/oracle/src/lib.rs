@@ -44,44 +44,36 @@
 //! one unsigned transaction floating in the network.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-use std::time::Duration as StdDuration;
-
 use frame_support::pallet_prelude::{
     InvalidTransaction as InvalidTx, TransactionValidity as TXValidity, ValidTransaction,
 };
 use frame_support::traits::Get;
-use frame_system::offchain::{
-    AppCrypto, CreateSignedTransaction, SendSignedTransaction, SendUnsignedTransaction, SignedPayload, Signer,
-    SigningTypes, SubmitTransaction,
+use frame_system::{
+    self as system,
+    // Pallet,
+    offchain::{
+        AppCrypto, CreateSignedTransaction, SendSignedTransaction, SendUnsignedTransaction, SignedPayload, Signer,
+        SigningTypes, SubmitTransaction,
+    },
+    pallet_prelude::BlockNumberFor,
 };
-use frame_system::pallet_prelude::BlockNumberFor;
-use frame_system::{self as system};
 use lite_json::json::JsonValue;
-use nostr_sdk::prelude::{Client, Event as EventNostr, EventId, Filter, JsonUtil, Keys, Kind, PublicKey};
-pub use pallet::*;
-// pub use pallet::types::
 // use lite_json::String;
 pub use parity_scale_codec::{Decode, Encode};
-use scale_info::TypeInfo;
-use serde::{Deserialize, Serialize};
-use sp_core::bounded_vec::BoundedVec;
 use sp_core::crypto::KeyTypeId;
 use sp_runtime::{
     offchain::{
         http,
         storage::{MutateStorageError, StorageRetrievalError, StorageValueRef},
-        storage_lock::{StorageLock, Time},
         Duration,
     },
 
     traits::{AtLeast32BitUnsigned, Zero},
-    // BoundedVec,
     // transaction_validity::{InvalidTransaction , TransactionValidity , ValidTransaction},
     RuntimeDebug,
 };
 use sp_std::vec::Vec;
-pub mod types;
-use types::nostr_types::{NostrEventData, NostrUser, NostrUserData};
+use sp_version::RuntimeVersion;
 
 #[cfg(test)]
 mod tests;
@@ -102,7 +94,7 @@ pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"deso");
 pub mod crypto {
     use scale_info::prelude::string::String;
     use sp_core::sr25519::Signature as Sr25519Signature;
-    use sp_runtime::app_crypto::{app_crypto, sr25519};
+    use sp_runtime::app_crypto::{app_crypto, sr25519, AppPublic, AppSignature, RuntimeAppPublic, RuntimePublic};
     use sp_runtime::traits::Verify;
     use sp_runtime::{MultiSignature, MultiSigner};
 
@@ -122,12 +114,21 @@ pub mod crypto {
     }
 }
 
+
+
+pub use pallet::*;
+use scale_info::TypeInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::tokens::Balance;
     use frame_system::pallet_prelude::*;
-    use nostr_sdk::{serde_json, JsonUtil};
+    use sp_runtime::traits::{AccountIdConversion, IdentifyAccount, Verify};
     use sp_runtime::MultiSignature;
+    use starknet_api::hash::{StarkFelt, StarkHash};
+    use starknet_api::state::StorageKey;
+    use starknet_api::transaction::{Calldata, Event as StarknetEvent, Fee, MessageToL1, TransactionHash};
 
     pub type Signature = MultiSignature;
 
@@ -169,9 +170,28 @@ pub mod pallet {
         #[pallet::constant]
         type UnsignedPriority: Get<TransactionPriority>;
 
-        /// Maximum len of event.
+        /// Maximum number of prices.
         #[pallet::constant]
-        type MaxEventLen: Get<u32>;
+        type MaxPrices: Get<u32>;
+
+        // #[pallet::constant]
+        // pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
+        // type AccountId: AccountId + Parameter + AtLeast32BitUnsigned + Default + Copy;
+        // pub type AccountId = madara_runtime::types::AccountId;
+
+        // type AccountId =  Parameter
+        // + Member
+        // + MaybeSerializeDeserialize
+        // + Debug
+        // + MaybeDisplay
+        // + Ord
+        // + MaxEncodedLen;
+
+        // // The type used to store balances.
+        // type Balance: Member + Parameter + AtLeast32BitUnsigned + Default + Copy;
+
+        // // // The minimum balance necessary for an account to exist.
+        // type MinBalance: Get<Self::Balance>;
     }
 
     #[pallet::hooks]
@@ -190,7 +210,8 @@ pub mod pallet {
             // significantly. You can use `RuntimeDebug` custom derive to hide details of the types
             // in WASM. The `sp-api` crate also provides a feature `disable-logging` to disable
             // all logging and thus, remove any logging from the WASM.
-            log::info!("Hello World from Nostr offchain workers!");
+            log::info!("Hello World from offchain workers!");
+
             // Since off-chain workers are just part of the runtime code, they have direct access
             // to the storage and other included pallets.
             //
@@ -203,105 +224,23 @@ pub mod pallet {
             // Here we call a helper function to calculate current average price.
             // This function reads storage entries of the current state.
             let average: Option<u32> = Self::average_price();
-            // log::debug!("Current price: {:?}", average);
-
-            log::info!("Nostr saved event");
-
-            let mut lock = StorageLock::<Time>::new(b"offchain-worker::lock");
+            log::debug!("Current price: {:?}", average);
 
             // For this example we are going to send both signed and unsigned transactions
             // depending on the block number.
             // Usually it's enough to choose one or the other.
             let should_send = Self::choose_transaction_type(block_number);
 
-            // Check timestamp to recall offchain worker
-            // let res = match should_send {
-            //     TransactionType::Signed => Self::fetch_price_and_send_signed(),
-            //     TransactionType::UnsignedForAny =>
-            // Self::fetch_price_and_send_unsigned_for_any_account(block_number),
-            //     TransactionType::UnsignedForAll =>
-            // Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
-            //     TransactionType::Raw => Self::fetch_price_and_send_raw_unsigned(block_number),
-            //     TransactionType::None => Ok(()),
-            // };
-            // if let Err(e) = res {
-            //     log::error!("Error: {}", e);
-            // }
-
-            // Get data nostr for User and TextNote
-
-            if let Ok(_guard) = lock.try_lock() {
-                // Users
-                let users = Self::fetch_async_events_filter(block_number, Kind::Metadata);
-
-                //  Check if events id already exist on the storage
-                match users {
-                    Ok(users) => {
-                        let mut events_nostr_data: Vec<NostrUser> = vec![];
-                        let mut events_vec_data: Vec<Vec<u8>> = vec![];
-                        for event in users.iter() {
-                            // let event: EventNostr = serde_json::from_slice(event.content.as_str()).unwrap();
-                            // let event: EventNostr = serde_json::from_slice(event).unwrap();
-                            let pubkey = event.pubkey.clone();
-                            log::info!("event transform {:?}", event);
-                            let content = event.content.clone();
-                            println!("content {:?}", content);
-
-                            let json_data: &str = r#"{content}"#;
-
-                            println!("json_data {:?}", json_data);
-
-                            let user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
-                            if NostrUsersEvents::<T>::contains_key(&event.pubkey.to_bytes()) {
-                                // return Err(Error::<T>::EventAlreadySaved.into());
-                                log::info!("user already saved");
-                                Error::<T>::UserAlreadySaved;
-                            } else {
-                                let vec = event.as_json().into_bytes();
-                                events_vec_data.push(vec);
-                                events_nostr_data.push(user);
-                                // Self::save_event_signed(event.clone());
-                            }
-                        }
-
-                        // @TODO save here the state events on a vec directly to do only one call
-                        Self::store_users_nostr_signed(events_vec_data);
-                    }
-                    Err(_) => {}
-                }
-
-                // Event notes
-                //  Check if events id already exist on the storage
-
-                let events = Self::fetch_async_events_filter(block_number, Kind::TextNote);
-                match events {
-                    Ok(events) => {
-                        let mut events_nostr_data: Vec<NostrEventData> = vec![];
-                        let mut events_vec_data: Vec<Vec<u8>> = vec![];
-                        for event in events.iter() {
-                            let nostr_event_data =
-                                NostrEventData::from_nostr_event(&event).map_err(|_| Error::<T>::InvalidNostrEvent); // .map_err(|_| )?;
-
-                            match nostr_event_data {
-                                Ok(nostr_data) => {
-                                    // Check if the event ID already exists
-                                    if NostrEvents::<T>::contains_key(&nostr_data.id) {
-                                        log::info!("event already saved");
-                                        Error::<T>::EventAlreadySaved;
-                                    } else {
-                                        let vec = event.as_json().into_bytes();
-                                        events_vec_data.push(vec);
-                                        events_nostr_data.push(nostr_data);
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        Self::save_events_signed(events_vec_data);
-                    }
-                    Err(_) => {}
-                }
+            let res = match should_send {
+                TransactionType::Signed => Self::fetch_price_and_send_signed(),
+                TransactionType::UnsignedForAny => Self::fetch_price_and_send_unsigned_for_any_account(block_number),
+                TransactionType::UnsignedForAll => Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
+                TransactionType::Raw => Self::fetch_price_and_send_raw_unsigned(block_number),
+                TransactionType::None => Ok(()),
             };
+            if let Err(e) = res {
+                log::error!("Error: {}", e);
+            }
         }
     }
 
@@ -382,217 +321,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        #[pallet::call_index(3)]
-        #[pallet::weight({0})]
-        pub fn store_nostr_event(
-            origin: OriginFor<T>,
-
-            event_vec: Vec<u8>, // event: EventNostr,
-        ) -> DispatchResultWithPostInfo {
-            log::info!("store_nostr_event");
-
-            let who = ensure_signed(origin)?;
-
-            // let event=event_vec.;
-            let event: EventNostr = serde_json::from_slice(&event_vec).unwrap();
-            // let nostr_event: Event = serde_json::from_slice(&event).map_err(|_|
-            // Error::<T>::InvalidNostrEvent)?;
-
-            log::info!("event transform {:?}", event);
-
-            let nostr_event_data = NostrEventData::from_nostr_event(&event);
-            log::info!("nostr_event_data {:?}", nostr_event_data);
-
-            // Store the event in the storage map
-
-            // Store the event in the latest storage value
-            // LatestNostrEvent::<T>::put(&nostr_event_data);
-
-            // .map_err(|_| Error::<T>::InvalidNostrEvent)?;
-
-            match nostr_event_data {
-                Ok(data) => {
-                    // NostrEvents::<T>::insert(
-                    //     &who, // nostr_event_data.clone()
-                    //     data,
-                    // );
-                    NostrEvents::<T>::insert(&data.id, &data);
-                }
-                _ => {}
-            }
-
-            // Self::deposit_event(RawEvent::NostrEventStored(who, nostr_event_data));
-            // Ok(())
-            Ok(().into())
-        }
-
-        #[pallet::call_index(4)]
-        #[pallet::weight({0})]
-        pub fn store_nostr_events(
-            origin: OriginFor<T>,
-
-            events_vec: Vec<Vec<u8>>, // event: EventNostr,
-        ) -> DispatchResultWithPostInfo {
-            log::info!("store_nostr_events");
-            // let who = ensure_signed(origin)?;
-            for event_vec in events_vec {
-                let event: EventNostr = serde_json::from_slice(&event_vec).unwrap();
-                // let nostr_event: Event = serde_json::from_slice(&event).map_err(|_|
-                // Error::<T>::InvalidNostrEvent)?;
-
-                log::info!("event transform {:?}", event);
-
-                let nostr_event_data = NostrEventData::from_nostr_event(&event);
-                // .map_err(|_| Error::<T>::InvalidNostrEvent);
-
-                log::info!("nostr_event_data {:?}", nostr_event_data);
-
-                // Store the event in the latest storage value
-
-                // Store the event in the storage map
-
-                match nostr_event_data {
-                    Ok(data) => {
-                        // NostrEvents::<T>::insert(
-                        //     &who, // nostr_event_data.clone()
-                        //     data,
-                        // );
-                        NostrEvents::<T>::insert(&data.id, &data);
-                    }
-                    _ => {}
-                }
-            }
-            Ok(().into())
-        }
-
-        #[pallet::call_index(5)]
-        #[pallet::weight({0})]
-        pub fn store_users_nostr_call(
-            origin: OriginFor<T>,
-
-            events_vec: Vec<Vec<u8>>, // event: EventNostr,
-        ) -> DispatchResultWithPostInfo {
-            log::info!("store_users_nostr");
-            // let who = ensure_signed(origin)?;
-            for event_vec in events_vec {
-                let event: EventNostr = serde_json::from_slice(&event_vec).unwrap();
-                let pubkey = event.pubkey.clone();
-                log::info!("event transform {:?}", event);
-                let content = event.content.clone();
-                println!("content {:?}", content);
-
-                let json_data: &str = r#"{content}"#;
-
-                println!("json_data {:?}", json_data);
-
-                let user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
-                // let my_struct: NostrUser = serde_json::from_str(json_data).unwrap();
-                // println!("user nostr display name {:#?}", user.display_name);
-                // println!("user nostr nip05 name {:#?}", user.nip05);
-
-                let mut existing_user = NostrUsersEvents::<T>::get(pubkey.to_bytes().clone());
-                // .ok_or(Error::<T>::UserNotFound)?;
-
-                // if !existing_user && Some(user).is_some() {
-                //     // NostrUsersEvents::<T>::insert(pubkey.clone(), &user);
-                // }
-
-                // let new_user = user.copy();
-                let new_user = user.clone();
-
-                // let new_user_data= new_user.
-                let new_user_data = NostrUser::from_nostr_user_into_data(new_user).unwrap();
-
-                // Check if the new user data is different from the existing user data
-                if existing_user == new_user_data {
-                    // continue;
-                    log::info!("user already saved");
-                    return Err(Error::<T>::NoChangesDetected.into());
-                }
-
-                // Update the user data
-
-                existing_user.nip05 = new_user_data.nip05.clone();
-                existing_user.display_name = new_user_data.display_name.clone();
-                existing_user.name = new_user_data.name.clone();
-                existing_user.website = new_user_data.website.clone();
-                existing_user.banner = new_user_data.banner.clone();
-                existing_user.bot = new_user_data.bot;
-                existing_user.pubkey = new_user_data.pubkey;
-
-                // Update fields if provided, otherwise keep existing
-                // existing_user.nip05 = match new_user.nip05 {
-                //     Some(n) => Some(BoundedVec::try_from(n).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.nip05,
-                // };
-                // existing_user.display_name = match new_user.display_name {
-                //     Some(d) => Some(BoundedVec::try_from(d).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.display_name,
-                // };
-                // existing_user.name = match new_user.name {
-                //     Some(n) => Some(BoundedVec::try_from(n).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.name,
-                // };
-                // existing_user.website = match new_user.website {
-                //     Some(w) => Some(BoundedVec::try_from(w).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.website,
-                // };
-                // existing_user.banner = match new_user.banner {
-                //     Some(b) => Some(BoundedVec::try_from(b).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.banner,
-                // };
-                // existing_user.bot = new_user.bot;
-
-                // existing_user.nip05 = new_user.nip05.clone();
-                // existing_user.display_name = new_user.display_name.clone();
-                // existing_user.name = new_user.name.clone();
-                // existing_user.website = new_user.website.clone();
-                // existing_user.banner = new_user.banner.clone();
-                // existing_user.bot = new_user.bot;
-                // existing_user.pubkey = pubkey.to_bytes();
-
-                // let vec: Vec<u8> = vec![0; 64]; // A Vec<u8> filled with 64 zeros
-
-                // // Ensure the Vec has exactly 64 elements
-                // if vec.len() != 64 {
-                //     panic!("Expected a Vec<u8> with exactly 64 elements");
-                // }
-
-                // // Convert Vec<u8> to [u8; 64]
-                // let array: [u8; 64] = vec.try_into();
-
-                // existing_user.nip05 = Some(new_user.nip05.clone());
-                // existing_user.display_name = Some(new_user.display_name.clone());
-                // existing_user.name = Some(new_user.name.clone());
-                // existing_user.website = Some(new_user.website.clone());
-                // existing_user.banner = Some(new_user.banner.clone());
-                // existing_user.bot = Some(new_user.bot);
-                // existing_user.pubkey = Some(pubkey);
-
-                // Store the updated user in the storage map
-
-                let nostr_event_data =
-                    NostrEventData::from_nostr_event(&event).map_err(|_| Error::<T>::InvalidNostrEvent);
-                // NostrUsersEvents::<T>::insert(pubkey.clone(), &existing_user);
-                // NostrUsersEvents::<T>::insert(nostr_event_data.id, &existing_user);
-
-                // Store the event in the storage map
-
-                match nostr_event_data {
-                    Ok(data) => {
-                        // NostrEvents::<T>::insert(
-                        //     &who, // nostr_event_data.clone()
-                        //     data,
-                        // );
-                        NostrUsersEvents::<T>::insert(pubkey.to_bytes(), &existing_user);
-
-                        // NostrUsersEvents::<T>::insert(&data.id, &data);
-                    }
-                    _ => {}
-                }
-            }
-            Ok(().into())
-        }
     }
 
     /// Events for the pallet.
@@ -610,27 +338,6 @@ pub mod pallet {
         NostrEventSaved {
             nostr_event: NostrEventData,
         },
-        ListNostrEventSaved {
-            nostr_event: Vec<NostrEventData>,
-        },
-        NostrEventStored {
-            nostr_events: Vec<NostrEventData>,
-        },
-        // NostrEventStored(AccountId, NostrEventData),
-    }
-
-    #[pallet::error]
-    pub enum Error<T> {
-        /// Error names should be descriptive.
-        InvalidParameter,
-        /// Errors should have helpful documentation associated with them.
-        OutOfSpace,
-        InvalidNostrEvent,
-        EventAlreadySaved,
-        UserAlreadySaved,
-        UserNotFound,
-        NoChangesDetected,
-        ExceededMaxLength,
     }
 
     #[pallet::validate_unsigned]
@@ -664,12 +371,7 @@ pub mod pallet {
     /// This is used to calculate average price, should have bounded size.
     #[pallet::storage]
     #[pallet::getter(fn prices)]
-    pub(super) type Prices<T: Config> = StorageValue<_, BoundedVec<u32, T::MaxEventLen>, ValueQuery>;
-
-    /// This is used to calculate average price, should have bounded size.
-    #[pallet::storage]
-    #[pallet::getter(fn max_events_len)]
-    pub(super) type MaxEventLen<T: Config> = StorageValue<_, BoundedVec<u32, T::MaxEventLen>, ValueQuery>;
+    pub(super) type Prices<T: Config> = StorageValue<_, BoundedVec<u32, T::MaxPrices>, ValueQuery>;
 
     /// Defines the block when next unsigned transaction will be accepted.
     ///
@@ -679,22 +381,6 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn next_unsigned_at)]
     pub(super) type NextUnsignedAt<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn nostr_events_values)]
-    pub(super) type NostrEventStore<T: Config> = StorageValue<_, NostrEventData, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn users_values)]
-    pub(super) type NostrUsers<T: Config> = StorageValue<_, NostrEventData, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn nostr_events)]
-    pub(super) type NostrEvents<T: Config> = StorageMap<_, Blake2_128Concat, [u8; 32], NostrEventData, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn nostr_users)]
-    pub(super) type NostrUsersEvents<T: Config> = StorageMap<_, Blake2_128Concat, [u8; 32], NostrUserData, ValueQuery>;
 }
 
 /// Payload used by this example crate to hold price
@@ -735,7 +421,7 @@ impl<T: Config> Pallet<T> {
         // Start off by creating a reference to Local Storage value.
         // Since the local storage is common for all offchain workers, it's a good practice
         // to prepend your entry with the module name.
-        let val = StorageValueRef::persistent(b"deso::last_send");
+        let val = StorageValueRef::persistent(b"orderbook::last_send");
         // The Local Storage is persisted and shared between runs of the offchain workers,
         // and offchain workers may run concurrently. We can use the `mutate` function, to
         // write a storage entry in an atomic fashion. Under the hood it uses `compare_and_set`
@@ -790,148 +476,205 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn fetch_async_events_filter(block_number: BlockNumberFor<T>, kind: Kind) -> Result<Vec<EventNostr>, &'static str> {
-        log::info!("fetch async events");
-        // Call the async fetch function using a synchronous block_on
-        // let response = Self::block_on(Self::fetch_events(block_number));
-        let response = Self::block_on(Self::fetch_events_by_kind(block_number, kind));
-
-        match response {
-            Ok(events) => Ok(events),
-            Err(_) => Err("Failed to fetch data"),
+    /// A helper function to fetch the price and send signed transaction.
+    fn fetch_price_and_send_signed() -> Result<(), &'static str> {
+        let signer = Signer::<T, T::AuthorityId>::all_accounts();
+        if !signer.can_sign() {
+            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
         }
+        // Make an external HTTP request to fetch the current price.
+        // Note this call will block until response is received.
+        let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
+
+        // Using `send_signed_transaction` associated type we create and submit a transaction
+        // representing the call, we've just created.
+        // Submit signed will return a vector of results for all accounts that were found in the
+        // local keystore with expected `KEY_TYPE`.
+        let results = signer.send_signed_transaction(|_account| {
+            // Received price is wrapped into a call to `submit_price` public function of this
+            // pallet. This means that the transaction, when executed, will simply call that
+            // function passing `price` as an argument.
+            Call::submit_price { price }
+        });
+
+        for (acc, res) in &results {
+            match res {
+                Ok(()) => log::info!("[{:?}] Submitted price of {} cents", acc.id, price),
+                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
+            }
+        }
+
+        Ok(())
     }
 
-    fn block_on<F: std::future::Future>(future: F) -> F::Output {
-        use tokio::runtime::Runtime;
-        let rt = Runtime::new().unwrap();
-        rt.block_on(future)
+    /// A helper function to fetch the price and send a raw unsigned transaction.
+    fn fetch_price_and_send_raw_unsigned(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        // Make sure we don't fetch the price if unsigned transaction is going to be rejected
+        // anyway.
+        let next_unsigned_at = <NextUnsignedAt<T>>::get();
+        if next_unsigned_at > block_number {
+            return Err("Too early to send unsigned transaction");
+        }
+
+        // Make an external HTTP request to fetch the current price.
+        // Note this call will block until response is received.
+        let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
+
+        // Received price is wrapped into a call to `submit_price_unsigned` public function of this
+        // pallet. This means that the transaction, when executed, will simply call that function
+        // passing `price` as an argument.
+        let call = Call::submit_price_unsigned { block_number, price };
+
+        // Now let's create a transaction out of this call and submit it to the pool.
+        // Here we showcase two ways to send an unsigned transaction / unsigned payload (raw)
+        //
+        // By default unsigned transactions are disallowed, so we need to whitelist this case
+        // by writing `UnsignedValidator`. Note that it's EXTREMELY important to carefuly
+        // implement unsigned validation logic, as any mistakes can lead to opening DoS or spam
+        // attack vectors. See validation logic docs for more details.
+        //
+        SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+            .map_err(|()| "Unable to submit unsigned transaction.")?;
+
+        Ok(())
     }
 
     /// A helper function to fetch the price, sign payload and send an unsigned transaction
-    async fn fetch_events_by_kind(
-        block_number: BlockNumberFor<T>,
-        kind: Kind,
-    ) -> Result<Vec<EventNostr>, &'static str> {
-        log::info!("fetch_events");
-        let my_keys = Keys::generate();
-        let client = Client::new(my_keys);
-        // let proxy = Some(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 9050)));
-        client.add_relay("wss://nostr.joyboy.community").await;
+    fn fetch_price_and_send_unsigned_for_any_account(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        // Make sure we don't fetch the price if unsigned transaction is going to be rejected
+        // anyway.
+        let next_unsigned_at = <NextUnsignedAt<T>>::get();
+        if next_unsigned_at > block_number {
+            return Err("Too early to send unsigned transaction");
+        }
 
-        client.connect().await;
-        let filter = Filter::new().kind(kind);
+        // Make an external HTTP request to fetch the current price.
+        // Note this call will block until response is received.
+        let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
 
-        let events = client
-            .get_events_of(
-                vec![filter],
-                Some(StdDuration::from_secs(10)), // Duration::from_millis(2_000)
+        // -- Sign using any account
+        let (_, result) = Signer::<T, T::AuthorityId>::any_account()
+            .send_unsigned_transaction(
+                |account| PricePayload { price, block_number, public: account.public.clone() },
+                |payload, signature| Call::submit_price_unsigned_with_signed_payload {
+                    price_payload: payload,
+                    signature,
+                },
             )
-            .await;
-        log::info!("{events:#?}");
+            .ok_or("No local accounts accounts available.")?;
+        result.map_err(|()| "Unable to submit transaction")?;
 
-        match events {
-            Ok(data) => Ok(data),
-            Err(_) => Err("Failed to fetch data"),
-        }
+        Ok(())
     }
 
-    /// A helper function to fetch the price and send signed transaction.
-    fn save_event_signed(event: EventNostr) -> Result<(), &'static str> {
-        let signer = Signer::<T, T::AuthorityId>::all_accounts();
-        if !signer.can_sign() {
-            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
+    /// A helper function to fetch the price, sign payload and send an unsigned transaction
+    fn fetch_price_and_send_unsigned_for_all_accounts(block_number: BlockNumberFor<T>) -> Result<(), &'static str> {
+        // Make sure we don't fetch the price if unsigned transaction is going to be rejected
+        // anyway.
+        let next_unsigned_at = <NextUnsignedAt<T>>::get();
+        if next_unsigned_at > block_number {
+            return Err("Too early to send unsigned transaction");
         }
 
-        // Using `send_signed_transaction` associated type we create and submit a transaction
-        // representing the call, we've just created.
-        // Submit signed will return a vector of results for all accounts that were found in the
-        // local keystore with expected `KEY_TYPE`.
-        let results = signer.send_signed_transaction(|_account| {
-            // Received price is wrapped into a call to `submit_price` public function of this
-            // pallet. This means that the transaction, when executed, will simply call that
-            // function passing `price` as an argument.
-            Call::store_nostr_event { event_vec: event.as_json().into_bytes() }
-        });
+        // Make an external HTTP request to fetch the current price.
+        // Note this call will block until response is received.
+        let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
 
-        for (acc, res) in &results {
-            match res {
-                Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, event)
-                }
-                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
+        // -- Sign using all accounts
+        let transaction_results = Signer::<T, T::AuthorityId>::all_accounts().send_unsigned_transaction(
+            |account| PricePayload { price, block_number, public: account.public.clone() },
+            |payload, signature| Call::submit_price_unsigned_with_signed_payload { price_payload: payload, signature },
+        );
+        for (_account_id, result) in transaction_results.into_iter() {
+            if result.is_err() {
+                return Err("Unable to submit transaction");
             }
         }
 
         Ok(())
     }
 
-    /// A helper function to fetch the price and send signed transaction.
-    fn save_events_signed(events: Vec<Vec<u8>>) -> Result<(), &'static str> {
-        let signer = Signer::<T, T::AuthorityId>::all_accounts();
-        if !signer.can_sign() {
-            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
+    /// Fetch current price and return the result in cents.
+    fn fetch_price() -> Result<u32, http::Error> {
+        // We want to keep the offchain worker execution time reasonable, so we set a hard-coded
+        // deadline to 2s to complete the external call.
+        // You can also wait indefinitely for the response, however you may still get a timeout
+        // coming from the host machine.
+        let deadline = sp_io::offchain::timestamp().add(Duration::from_millis(2_000));
+        // Initiate an external HTTP GET request.
+        // This is using high-level wrappers from `sp_runtime`, for the low-level calls that
+        // you can find in `sp_io`. The API is trying to be similar to `request`, but
+        // since we are running in a custom WASM execution environment we can't simply
+        // import the library here.
+        let request = http::Request::get("https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=USD");
+        // We set the deadline for sending of the request, note that awaiting response can
+        // have a separate deadline. Next we send the request, before that it's also possible
+        // to alter request headers or stream body content in case of non-GET requests.
+        let pending = request.deadline(deadline).send().map_err(|_| http::Error::IoError)?;
+
+        // The request is already being processed by the host, we are free to do anything
+        // else in the worker (we can send multiple concurrent requests too).
+        // At some point however we probably want to check the response though,
+        // so we can block current thread and wait for it to finish.
+        // Note that since the request is being driven by the host, we don't have to wait
+        // for the request to have it complete, we will just not read the response.
+        let response = pending.try_wait(deadline).map_err(|_| http::Error::DeadlineReached)??;
+        // Let's check the status code before we proceed to reading the response.
+        if response.code != 200 {
+            log::warn!("Unexpected status code: {}", response.code);
+            return Err(http::Error::Unknown);
         }
 
-        // Using `send_signed_transaction` associated type we create and submit a transaction
-        // representing the call, we've just created.
-        // Submit signed will return a vector of results for all accounts that were found in the
-        // local keystore with expected `KEY_TYPE`.
-        let results = signer.send_signed_transaction(|_account| {
-            // Received price is wrapped into a call to `submit_price` public function of this
-            // pallet. This means that the transaction, when executed, will simply call that
-            // function passing `price` as an argument.
-            Call::store_nostr_events { events_vec: events.clone() }
-        });
+        // Next we want to fully read the response body and collect it to a vector of bytes.
+        // Note that the return object allows you to read the body in chunks as well
+        // with a way to control the deadline.
+        let body = response.body().collect::<Vec<u8>>();
 
-        for (acc, res) in &results {
-            match res {
-                Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
-                }
-                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
+        // Create a str slice from the body.
+        let body_str = sp_std::str::from_utf8(&body).map_err(|_| {
+            log::warn!("No UTF8 body");
+            http::Error::Unknown
+        })?;
+
+        let price = match Self::parse_price(body_str) {
+            Some(price) => Ok(price),
+            None => {
+                log::warn!("Unable to extract price from the response: {:?}", body_str);
+                Err(http::Error::Unknown)
             }
-        }
+        }?;
 
-        Ok(())
+        log::warn!("Got price: {} cents", price);
+
+        Ok(price)
     }
 
-    /// A helper function to fetch the price and send signed transaction.
-    fn store_users_nostr_signed(events: Vec<Vec<u8>>) -> Result<(), &'static str> {
-        let signer = Signer::<T, T::AuthorityId>::all_accounts();
-        if !signer.can_sign() {
-            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
-        }
-
-        // Using `send_signed_transaction` associated type we create and submit a transaction
-        // representing the call, we've just created.
-        // Submit signed will return a vector of results for all accounts that were found in the
-        // local keystore with expected `KEY_TYPE`.
-        let results = signer.send_signed_transaction(|_account| {
-            // Received price is wrapped into a call to `submit_price` public function of this
-            // pallet. This means that the transaction, when executed, will simply call that
-            // function passing `price` as an argument.
-            Call::store_users_nostr_call { events_vec: events.clone() }
-        });
-
-        for (acc, res) in &results {
-            match res {
-                Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
+    /// Parse the price from the given JSON string using `lite-json`.
+    ///
+    /// Returns `None` when parsing failed or `Some(price in cents)` when parsing is successful.
+    fn parse_price(price_str: &str) -> Option<u32> {
+        let val = lite_json::parse_json(price_str);
+        let price = match val.ok()? {
+            JsonValue::Object(obj) => {
+                let (_, v) = obj.into_iter().find(|(k, _)| k.iter().copied().eq("USD".chars()))?;
+                match v {
+                    JsonValue::Number(number) => number,
+                    _ => return None,
                 }
-                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
-        }
+            _ => return None,
+        };
 
-        Ok(())
+        let exp = price.fraction_length.saturating_sub(2);
+        Some(price.integer as u32 * 100 + (price.fraction / 10_u64.pow(exp)) as u32)
     }
 
     /// Add new price to the list.
     fn add_price(maybe_who: Option<T::AccountId>, price: u32) {
         log::info!("Adding to the average: {}", price);
-        <MaxEventLen<T>>::mutate(|prices| {
+        <Prices<T>>::mutate(|prices| {
             if prices.try_push(price).is_err() {
-                prices[(price % T::MaxEventLen::get()) as usize] = price;
+                prices[(price % T::MaxPrices::get()) as usize] = price;
             }
         });
 
@@ -972,7 +715,7 @@ impl<T: Config> Pallet<T> {
             .map(|price| if &price > new_price { price - new_price } else { new_price - price })
             .unwrap_or(0);
 
-        ValidTransaction::with_tag_prefix("NostrWorker")
+        ValidTransaction::with_tag_prefix("OracleWorker")
 			// We set base priority to 2**20 and hope it's included before any other
 			// transactions in the pool. Next we tweak the priority depending on how much
 			// it differs from the current average. (the more it differs the more priority it
