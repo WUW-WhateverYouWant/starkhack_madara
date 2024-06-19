@@ -15,9 +15,9 @@ mod tests;
 
 use frame_support::pallet_prelude::DispatchResult;
 use frame_system::pallet_prelude::OriginFor;
-use nostr_sdk::{
-    Event as EventNostr
-};
+// use nostr_sdk::{
+//     Event as EventNostr
+// };
 
 sp_api::decl_runtime_apis! {
 
@@ -32,7 +32,7 @@ sp_api::decl_runtime_apis! {
             price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
             _signature: T::Signature);
         fn store_nostr_event(origin: OriginFor<T>, event_vec:Vec<u8>);
-
+        fn store_nostr_events(origin: OriginFor<T>, events_vec:Vec<Vec<u8>>);
            
     }
 

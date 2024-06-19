@@ -374,7 +374,8 @@ pub mod pallet {
                 //  Check if events id already exist on the storage
                 match events {
                     Ok(events) => {
-                        let events_nostr_data: Vec<NostrEventData> = vec![];
+                        let mut events_nostr_data: Vec<NostrEventData> = vec![];
+                        let mut events_vec_data: Vec<Vec<u8>> = vec![];
                         for event in events.iter() {
                             let nostr_event_data =
                                 NostrEventData::from_nostr_event(&event).map_err(|_| Error::<T>::InvalidNostrEvent);
@@ -382,6 +383,7 @@ pub mod pallet {
                             // log::info!("Nostr_event_data transform {:?}", nostr_event_data);
                             // let json = event.as_json();
                             // log::info!("json transform {:?}", json);
+
 
                             match nostr_event_data {
                                 Ok(nostr_data) => {
@@ -391,17 +393,22 @@ pub mod pallet {
                                         log::info!("event already saved");
                                         Error::<T>::EventAlreadySaved;
                                     } else {
+                                        let vec= event.as_json().into_bytes();
+                                        events_vec_data.push(vec);
                                         events_nostr_data.push(nostr_data);
-                                        Self::save_event_signed(event.clone());
+                                        // Self::save_event_signed(event.clone());
                                     }
                                 }
                                 _ => {}
                             }
                         }
+
+                        // @TODO save here the state events on a vec directly to do only one call
+                        Self::save_events_signed(events_vec_data);
                     }
                     Err(_) => {}
                 }
-            }
+            };
 
    
         }
@@ -528,20 +535,50 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // #[pallet::call_index(3)]
-        // #[pallet::weight({0})]
-        // pub fn save_events(
-        //     origin: OriginFor<T>,
-        //     price_payload: PricePayload<T::Public, BlockNumberFor<T>>,
-        //     _signature: T::Signature,
-        // ) -> DispatchResultWithPostInfo { // This ensures that the function can only be called via
-        //   unsigned transaction. ensure_none(origin)?; // Add the price to the on-chain list, but mark it
-        //   as coming from an empty address. Self::add_price(None, price_payload.price); // now increment
-        //   the block number at which we expect next unsigned transaction. let current_block =
-        //   <system::Pallet<T>>::block_number(); <NextUnsignedAt<T>>::put(current_block +
-        //   T::UnsignedInterval::get()); Ok(().into())
-        // }
-    }
+        #[pallet::call_index(4)]
+        #[pallet::weight({0})]
+        pub fn store_nostr_events(
+            origin: OriginFor<T>,
+
+            events_vec: Vec<Vec<u8>>, // event: EventNostr,
+        ) -> DispatchResultWithPostInfo {
+            log::info!("store_nostr_events");
+            // let who = ensure_signed(origin)?;
+            for event_vec in events_vec {
+
+                let event: EventNostr = serde_json::from_slice(&event_vec).unwrap();
+                // let nostr_event: Event = serde_json::from_slice(&event).map_err(|_|
+                // Error::<T>::InvalidNostrEvent)?;
+
+                log::info!("event transform {:?}", event);
+
+                let nostr_event_data = NostrEventData::from_nostr_event(&event)
+                .map_err(|_| Error::<T>::InvalidNostrEvent);
+                
+                log::info!("nostr_event_data {:?}", nostr_event_data);
+
+                // Store the event in the latest storage value
+
+                // Store the event in the storage map
+
+                match nostr_event_data {
+                    Ok(data) => {
+                        // NostrEvents::<T>::insert(
+                        //     &who, // nostr_event_data.clone()
+                        //     data,
+                        // );
+                        NostrEvents::<T>::insert(&data.id, &data);
+                    }
+                    _ => {}
+                }
+
+            }
+            Ok(().into())
+        }
+
+
+}
+
 
     /// Events for the pallet.
     #[pallet::event]
@@ -850,6 +887,37 @@ impl<T: Config> Pallet<T> {
             match res {
                 Ok(()) => {
                     log::info!("[{:?}] Submitted events of {:?}", acc.id, event)
+                }
+                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
+            }
+        }
+
+        Ok(())
+    }
+
+
+    /// A helper function to fetch the price and send signed transaction.
+    fn save_events_signed(events: Vec<Vec<u8>>) -> Result<(), &'static str> {
+        let signer = Signer::<T, T::AuthorityId>::all_accounts();
+        if !signer.can_sign() {
+            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
+        }
+
+        // Using `send_signed_transaction` associated type we create and submit a transaction
+        // representing the call, we've just created.
+        // Submit signed will return a vector of results for all accounts that were found in the
+        // local keystore with expected `KEY_TYPE`.
+        let results = signer.send_signed_transaction(|_account| {
+            // Received price is wrapped into a call to `submit_price` public function of this
+            // pallet. This means that the transaction, when executed, will simply call that
+            // function passing `price` as an argument.
+            Call::store_nostr_events { events_vec: events.clone() }
+        });
+
+        for (acc, res) in &results {
+            match res {
+                Ok(()) => {
+                    log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
                 }
                 Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
