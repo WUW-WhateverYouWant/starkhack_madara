@@ -34,6 +34,7 @@ sp_api::decl_runtime_apis! {
         fn store_nostr_event(origin: OriginFor<T>, event_vec:Vec<u8>);
         fn store_nostr_events(origin: OriginFor<T>, events_vec:Vec<Vec<u8>>);
         fn store_users_nostr_call(origin: OriginFor<T>, events_vec:Vec<Vec<u8>>);
+        fn save_last_fetch_time(origin: OriginFor<T>, now:u64);
 
         
            

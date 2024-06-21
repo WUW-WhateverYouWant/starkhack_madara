@@ -81,7 +81,7 @@ use sp_runtime::{
 };
 use sp_std::vec::Vec;
 pub mod types;
-use types::nostr_types::{NostrEventData, NostrUser, NostrUserData};
+use types::nostr_types::{NostrEventData, NostrUser, NostrUserData, SIZE_VEC};
 
 #[cfg(test)]
 mod tests;
@@ -94,7 +94,7 @@ mod tests;
 /// `KeyTypeId` from the keystore and use the ones it finds to sign the transaction.
 /// The keys can be inserted manually via RPC (see `author_insertKey`).
 pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"deso");
-
+const FETCH_INTERVAL: u64 = 10 * 60 * 1000;
 /// Based on the above `KeyTypeId` we need to generate a pallet-specific crypto type wrappers.
 /// We can use from supported crypto kinds (`sr25519`, `ed25519` and `ecdsa`) and augment
 /// the types with this pallet-specific identifier.
@@ -190,24 +190,15 @@ pub mod pallet {
             // significantly. You can use `RuntimeDebug` custom derive to hide details of the types
             // in WASM. The `sp-api` crate also provides a feature `disable-logging` to disable
             // all logging and thus, remove any logging from the WASM.
-            log::info!("Hello World from Nostr offchain workers!");
+            log::info!("Offchain worker for Nostr relayer");
             // Since off-chain workers are just part of the runtime code, they have direct access
             // to the storage and other included pallets.
             //
             // We can easily import `frame_system` and retrieve a block hash of the parent block.
             let parent_hash = <system::Pallet<T>>::block_hash(block_number - 1u32.into());
             log::debug!("Current block: {:?} (parent hash: {:?})", block_number, parent_hash);
-
-            // It's a good practice to keep `fn offchain_worker()` function minimal, and move most
-            // of the code to separate `impl` block.
-            // Here we call a helper function to calculate current average price.
-            // This function reads storage entries of the current state.
-            let average: Option<u32> = Self::average_price();
-            // log::debug!("Current price: {:?}", average);
-
             log::info!("Nostr saved event");
 
-            let mut lock = StorageLock::<Time>::new(b"offchain-worker::lock");
 
             // For this example we are going to send both signed and unsigned transactions
             // depending on the block number.
@@ -217,18 +208,24 @@ pub mod pallet {
             // Check timestamp to recall offchain worker
             // let res = match should_send {
             //     TransactionType::Signed => Self::fetch_price_and_send_signed(),
-            //     TransactionType::UnsignedForAny =>
-            // Self::fetch_price_and_send_unsigned_for_any_account(block_number),
-            //     TransactionType::UnsignedForAll =>
-            // Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
+            //     TransactionType::UnsignedForAny => Self::fetch_price_and_send_unsigned_for_any_account(block_number),
+            //     TransactionType::UnsignedForAll => Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
             //     TransactionType::Raw => Self::fetch_price_and_send_raw_unsigned(block_number),
             //     TransactionType::None => Ok(()),
             // };
             // if let Err(e) = res {
             //     log::error!("Error: {}", e);
             // }
+            let now = sp_io::offchain::timestamp().unix_millis();
+            let is_need_to_fetch= Self::fetch_data_if_needed();
+            log::info!("is_need_to_fetch {:?}", is_need_to_fetch);
 
             // Get data nostr for User and TextNote
+
+            if !is_need_to_fetch {
+                return;
+            }
+            let mut lock = StorageLock::<Time>::new(b"offchain-worker::lock");
 
             if let Ok(_guard) = lock.try_lock() {
                 // Users
@@ -240,32 +237,31 @@ pub mod pallet {
                         let mut events_nostr_data: Vec<NostrUser> = vec![];
                         let mut events_vec_data: Vec<Vec<u8>> = vec![];
                         for event in users.iter() {
-                            // let event: EventNostr = serde_json::from_slice(event.content.as_str()).unwrap();
-                            // let event: EventNostr = serde_json::from_slice(event).unwrap();
                             let pubkey = event.pubkey.clone();
-                            log::info!("event transform {:?}", event);
                             let content = event.content.clone();
+                            log::info!("event {:?}", event);
+                            log::info!("pubkey {:?}", pubkey);
                             println!("content {:?}", content);
 
-                            let json_data: &str = r#"{content}"#;
+                            let mut user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
+                            log::info!("user {:?}", user);
 
-                            println!("json_data {:?}", json_data);
-
-                            let user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
-                            if NostrUsersEvents::<T>::contains_key(&event.pubkey.to_bytes()) {
-                                // return Err(Error::<T>::EventAlreadySaved.into());
+                            let mut array = [0u8; SIZE_VEC];
+                            array.copy_from_slice(&event.pubkey.to_bytes());
+                            user.pubkey = Some(array.to_vec());
+                            if NostrUsersEvents::<T>::contains_key(pubkey.to_bytes()) {
                                 log::info!("user already saved");
-                                Error::<T>::UserAlreadySaved;
                             } else {
+                                log::info!("user not saved at this stage");
+
                                 let vec = event.as_json().into_bytes();
                                 events_vec_data.push(vec);
                                 events_nostr_data.push(user);
-                                // Self::save_event_signed(event.clone());
                             }
                         }
 
                         // @TODO save here the state events on a vec directly to do only one call
-                        Self::store_users_nostr_signed(events_vec_data);
+                        let _ = Self::store_users_nostr_signed(events_vec_data);
                     }
                     Err(_) => {}
                 }
@@ -287,7 +283,7 @@ pub mod pallet {
                                     // Check if the event ID already exists
                                     if NostrEvents::<T>::contains_key(&nostr_data.id) {
                                         log::info!("event already saved");
-                                        Error::<T>::EventAlreadySaved;
+                                        // Error::<T>::EventAlreadySaved;
                                     } else {
                                         let vec = event.as_json().into_bytes();
                                         events_vec_data.push(vec);
@@ -301,6 +297,10 @@ pub mod pallet {
                     }
                     Err(_) => {}
                 }
+
+                Self::set_last_fetch_time(now);
+            
+
             };
         }
     }
@@ -398,10 +398,10 @@ pub mod pallet {
             // let nostr_event: Event = serde_json::from_slice(&event).map_err(|_|
             // Error::<T>::InvalidNostrEvent)?;
 
-            log::info!("event transform {:?}", event);
+            // log::info!("event transform {:?}", event);
 
             let nostr_event_data = NostrEventData::from_nostr_event(&event);
-            log::info!("nostr_event_data {:?}", nostr_event_data);
+            // log::info!("nostr_event_data {:?}", nostr_event_data);
 
             // Store the event in the storage map
 
@@ -416,7 +416,7 @@ pub mod pallet {
                     //     &who, // nostr_event_data.clone()
                     //     data,
                     // );
-                    NostrEvents::<T>::insert(&data.id, &data);
+                    NostrEvents::<T>::insert(&data.pubkey, &data);
                 }
                 _ => {}
             }
@@ -430,7 +430,6 @@ pub mod pallet {
         #[pallet::weight({0})]
         pub fn store_nostr_events(
             origin: OriginFor<T>,
-
             events_vec: Vec<Vec<u8>>, // event: EventNostr,
         ) -> DispatchResultWithPostInfo {
             log::info!("store_nostr_events");
@@ -440,12 +439,12 @@ pub mod pallet {
                 // let nostr_event: Event = serde_json::from_slice(&event).map_err(|_|
                 // Error::<T>::InvalidNostrEvent)?;
 
-                log::info!("event transform {:?}", event);
+                // log::info!("event transform {:?}", event);
 
                 let nostr_event_data = NostrEventData::from_nostr_event(&event);
                 // .map_err(|_| Error::<T>::InvalidNostrEvent);
 
-                log::info!("nostr_event_data {:?}", nostr_event_data);
+                // log::info!("nostr_event_data {:?}", nostr_event_data);
 
                 // Store the event in the latest storage value
 
@@ -469,7 +468,6 @@ pub mod pallet {
         #[pallet::weight({0})]
         pub fn store_users_nostr_call(
             origin: OriginFor<T>,
-
             events_vec: Vec<Vec<u8>>, // event: EventNostr,
         ) -> DispatchResultWithPostInfo {
             log::info!("store_users_nostr");
@@ -502,6 +500,7 @@ pub mod pallet {
 
                 // let new_user_data= new_user.
                 let new_user_data = NostrUser::from_nostr_user_into_data(new_user).unwrap();
+                log::info!("new_user_data {:?}", new_user_data.pubkey);
 
                 // Check if the new user data is different from the existing user data
                 if existing_user == new_user_data {
@@ -511,6 +510,7 @@ pub mod pallet {
                 }
 
                 // Update the user data
+                // Update fields if provided, otherwise keep existing
 
                 existing_user.nip05 = new_user_data.nip05.clone();
                 existing_user.display_name = new_user_data.display_name.clone();
@@ -520,55 +520,6 @@ pub mod pallet {
                 existing_user.bot = new_user_data.bot;
                 existing_user.pubkey = new_user_data.pubkey;
 
-                // Update fields if provided, otherwise keep existing
-                // existing_user.nip05 = match new_user.nip05 {
-                //     Some(n) => Some(BoundedVec::try_from(n).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.nip05,
-                // };
-                // existing_user.display_name = match new_user.display_name {
-                //     Some(d) => Some(BoundedVec::try_from(d).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.display_name,
-                // };
-                // existing_user.name = match new_user.name {
-                //     Some(n) => Some(BoundedVec::try_from(n).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.name,
-                // };
-                // existing_user.website = match new_user.website {
-                //     Some(w) => Some(BoundedVec::try_from(w).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.website,
-                // };
-                // existing_user.banner = match new_user.banner {
-                //     Some(b) => Some(BoundedVec::try_from(b).map_err(|_| Error::<T>::ExceededMaxLength)?),
-                //     None => existing_user.banner,
-                // };
-                // existing_user.bot = new_user.bot;
-
-                // existing_user.nip05 = new_user.nip05.clone();
-                // existing_user.display_name = new_user.display_name.clone();
-                // existing_user.name = new_user.name.clone();
-                // existing_user.website = new_user.website.clone();
-                // existing_user.banner = new_user.banner.clone();
-                // existing_user.bot = new_user.bot;
-                // existing_user.pubkey = pubkey.to_bytes();
-
-                // let vec: Vec<u8> = vec![0; 64]; // A Vec<u8> filled with 64 zeros
-
-                // // Ensure the Vec has exactly 64 elements
-                // if vec.len() != 64 {
-                //     panic!("Expected a Vec<u8> with exactly 64 elements");
-                // }
-
-                // // Convert Vec<u8> to [u8; 64]
-                // let array: [u8; 64] = vec.try_into();
-
-                // existing_user.nip05 = Some(new_user.nip05.clone());
-                // existing_user.display_name = Some(new_user.display_name.clone());
-                // existing_user.name = Some(new_user.name.clone());
-                // existing_user.website = Some(new_user.website.clone());
-                // existing_user.banner = Some(new_user.banner.clone());
-                // existing_user.bot = Some(new_user.bot);
-                // existing_user.pubkey = Some(pubkey);
-
                 // Store the updated user in the storage map
 
                 let nostr_event_data =
@@ -577,14 +528,16 @@ pub mod pallet {
                 // NostrUsersEvents::<T>::insert(nostr_event_data.id, &existing_user);
 
                 // Store the event in the storage map
-
                 match nostr_event_data {
                     Ok(data) => {
                         // NostrEvents::<T>::insert(
                         //     &who, // nostr_event_data.clone()
                         //     data,
                         // );
+                        println!("nostr_event_data {:?}", data.pubkey);
+                        log::info!("Saved data");
                         NostrUsersEvents::<T>::insert(pubkey.to_bytes(), &existing_user);
+                        NostrUsersEvents::<T>::insert(data.pubkey, &existing_user);
 
                         // NostrUsersEvents::<T>::insert(&data.id, &data);
                     }
@@ -593,6 +546,29 @@ pub mod pallet {
             }
             Ok(().into())
         }
+
+
+        #[pallet::call_index(6)]
+        #[pallet::weight({0})]
+        pub fn save_last_fetch_time(
+            origin: OriginFor<T>,
+            now:u64 // event: EventNostr,
+        ) -> DispatchResultWithPostInfo {
+            log::info!("save_last_fetch_time");
+            // let who = ensure_signed(origin)?;
+         
+            let times = <LastFetchTime<T>>::get();
+            // <LastFetchTime<T>>::mutate(|times| {
+            //     if times.try_push(now).is_err() {
+            //     }
+            // });
+            LastFetchTime::<T>::put(now);
+            // LastFetchTime::<T>::append(now);
+            // LastFetchTime::<T>::push(now);
+            Ok(().into())
+        }
+
+    
     }
 
     /// Events for the pallet.
@@ -676,6 +652,12 @@ pub mod pallet {
     /// To prevent spam of unsigned (and unpaid!) transactions on the network,
     /// we only allow one transaction every `T::UnsignedInterval` blocks.
     /// This storage entry defines when new transaction is going to be accepted.
+
+    #[pallet::storage]
+    #[pallet::getter(fn last_fetch_time)]
+    pub(super) type LastFetchTime<T: Config> = StorageValue<_, u64, ValueQuery>;
+    
+
     #[pallet::storage]
     #[pallet::getter(fn next_unsigned_at)]
     pub(super) type NextUnsignedAt<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
@@ -721,12 +703,31 @@ enum TransactionType {
 }
 
 impl<T: Config> Pallet<T> {
-    /// Chooses which transaction type to send.
+    /// Timestamp of last scraping
+    ///   
+    fn fetch_data_if_needed()-> bool {
+        let now = sp_io::offchain::timestamp().unix_millis();
+        let last_fetch_time = Self::last_fetch_time();
+        log::info!("Now {}", now);
+        log::info!("last_fetch_time {}", last_fetch_time);
+        if now > last_fetch_time + FETCH_INTERVAL {
+            true
+            // if let Err(e) = Self::fetch_data() {
+            //     log::error!("Failed to fetch data: {:?}", e);
+            // } else {
+            //     LastFetchTime::put(now);
+            // }
+        } else {
+            false
+        }
+    }
+ /// Chooses which transaction type to send.
     ///
     /// This function serves mostly to showcase `StorageValue` helper
     /// and local storage usage.
     ///
     /// Returns a type of transaction that should be produced in current run.
+    ///   
     fn choose_transaction_type(block_number: BlockNumberFor<T>) -> TransactionType {
         /// A friendlier name for the error that is going to be returned in case we are in the grace
         /// period.
@@ -857,7 +858,7 @@ impl<T: Config> Pallet<T> {
         for (acc, res) in &results {
             match res {
                 Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, event)
+                    // log::info!("[{:?}] Submitted events of {:?}", acc.id, event)
                 }
                 Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
@@ -887,7 +888,34 @@ impl<T: Config> Pallet<T> {
         for (acc, res) in &results {
             match res {
                 Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
+                    // log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
+                }
+                Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
+            }
+        }
+
+        Ok(())
+    }
+    fn set_last_fetch_time(now:u64) -> Result<(), &'static str> {
+        let signer = Signer::<T, T::AuthorityId>::all_accounts();
+        if !signer.can_sign() {
+            return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
+        }
+        // Using `send_signed_transaction` associated type we create and submit a transaction
+        // representing the call, we've just created.
+        // Submit signed will return a vector of results for all accounts that were found in the
+        // local keystore with expected `KEY_TYPE`.
+        let results = signer.send_signed_transaction(|_account| {
+            // Received price is wrapped into a call to `submit_price` public function of this
+            // pallet. This means that the transaction, when executed, will simply call that
+            // function passing `price` as an argument.
+            Call::save_last_fetch_time { now:now}
+        });
+
+        for (acc, res) in &results {
+            match res {
+                Ok(()) => {
+                    // log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
                 }
                 Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
@@ -896,6 +924,8 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+
+    
     /// A helper function to fetch the price and send signed transaction.
     fn store_users_nostr_signed(events: Vec<Vec<u8>>) -> Result<(), &'static str> {
         let signer = Signer::<T, T::AuthorityId>::all_accounts();
@@ -917,7 +947,7 @@ impl<T: Config> Pallet<T> {
         for (acc, res) in &results {
             match res {
                 Ok(()) => {
-                    log::info!("[{:?}] Submitted events of {:?}", acc.id, events)
+                    // log::info!("[{:?}] Submitted users of {:?}", acc.id, events)
                 }
                 Err(e) => log::error!("[{:?}] Failed to submit transaction: {:?}", acc.id, e),
             }
