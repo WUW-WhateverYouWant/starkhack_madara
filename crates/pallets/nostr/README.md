@@ -10,3 +10,5 @@ This pallet aims to enable solutions for a Nostr relayer decentralization, censo
 
 -[] Fetch events of others relayers.
 -[] Aggregator data relayers for Statistics and gamification
+
+-[] Rewards for Nostr users on Joyboy relayer

@@ -205,16 +205,8 @@ pub mod nostr_types {
             }
 
             let mut content = [0u8; MAX_SIZE_VEC];
-            // content[..event.content.len()].copy_from_slice(&event.content);
             content[..event.content.len()].copy_from_slice(&event.content.as_bytes());
-            // let kind = u8::try_from(event.kind.to_owned()).map_err(|_| "Kind value out of range for u8")?;
-            // let kind = u8::try_from(event.kind.to_string()).map_err(|_| "Kind value out of range for u8")?;
-
-            // let user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
             let user: NostrUser = serde_json::from_str(event.content.as_str()).unwrap();
-
-            // let kind = event.kind.as_u32() as u8;
-
             let nostr_user = NostrUserData {
                 id: {
                     let mut array = [0u8; SIZE_VEC];
@@ -257,29 +249,7 @@ pub mod nostr_types {
                     array
                 },
                 bot: { false },
-                // display_name: {
-                //     let mut array = [0u8; MAX_SIZE_VEC];
-                //     array.copy_from_slice(&user.display_name.to_bytes());
-                //     array
-                // },
-                // name: {
-                //     let mut array = [0u8; MAX_SIZE_VEC];
-                //     array.copy_from_slice(&user.name.to_bytes());
-                //     array
-                // },
-                // website: {
-                //     let mut array = [0u8; MAX_SIZE_VEC];
-                //     array.copy_from_slice(&user.website.to_bytes());
-                //     array
-                // },
-                // nip05: {
-                //     let mut array = [0u8; MAX_SIZE_VEC];
-                //     array.copy_from_slice(&user.nip05.to_bytes());
-                //     array
-                // },
-                // bot: {
-                //     false
-                // },
+             
             };
             log::info!("nostr_user nip05 {:?}", nostr_user.nip05.clone());
             log::info!("nostr_user display_name{:?}", nostr_user.display_name.clone());
@@ -290,75 +260,14 @@ pub mod nostr_types {
     #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
     pub struct NostrUser {
         pub id: Option<String>,
-
         pub pubkey: Option<Vec<u8>>,
-        // pub pubkey: Option<PublicKey>,
         pub nip05: Option<String>,
         pub display_name: Option<String>,
         pub name: Option<String>,
         pub website: Option<String>,
         pub banner: Option<String>,
-        // pub nip05: Vec<u8>,
-        // pub nip05: Option<String>,
-        // pub display_name: String,
-        // pub name: String,
-        // pub website: String,
-        // pub banner: String,
         pub bot: Option<bool>,
-        // pub id: Option<String>,
-
-        // pub pubkey: Option<Vec<u8>>,
-        // pub nip05: Option<String>,
-        // pub display_name: Option<String>,
-        // pub name: Option<String>,
-        // pub website: Option<String>,
-        // pub banner: Option<String>,
-        // pub nip05: Vec<u8>,
-        // pub nip05: Option<String>,
-        // pub display_name: String,
-        // pub name: String,
-        // pub website: String,
-        // pub banner: String,
-        // pub bot: Option<bool>,
-        // pub id: Vec<u8>,
-        // pub pubkey: Vec<u8>,
-        // pub nip05: Vec<u8>,
-        // pub display_name: Vec<u8>,
-        // pub name: Vec<u8>,
-        // pub website: Vec<u8>,
-        // pub banner: Vec<u8>,
-        // pub bot: bool,
-        // id: [u8; SIZE_VEC],
-        // pubkey: [u8; SIZE_VEC],
-
-        // pub nip05: [u8; MAX_SIZE_VEC],
-        // pub display_name: [u8; MAX_SIZE_VEC],
-        // pub name: [u8; MAX_SIZE_VEC],
-        // pub website: [u8; MAX_SIZE_VEC],
-        // pub banner: [u8; MAX_SIZE_VEC],
-
-        // pub bot: bool,
-        // id: Option<BoundedVec<u8, MAX_NIP05_LEN>>,
-        // pubkey: Option<BoundedVec<u8, MAX_NIP05_LEN>>,
-        // pub nip05: Option<BoundedVec<u8, MAX_NIP05_LEN>>,
-        // pub display_name: Option<BoundedVec<u8, MAX_DISPLAY_NAME_LEN>>,
-        // pub name: Option<BoundedVec<u8, MAX_NAME_LEN>>,
-        // pub website: Option<BoundedVec<u8, MAX_WEBSITE_LEN>>,
-        // pub banner: Option<BoundedVec<u8, MAX_BANNER_LEN>>,
-        // pub bot: Option<bool>,
-        // id: Option<[u8; SIZE_VEC]>,
-        // // id: Option<PublicKey>,
-
-        // pubkey: Option<[u8; SIZE_VEC]>,
-        // // pubkey: Option<PublicKey>,
-
-        // nip05: Option<Vec<u8>>,
-        // display_name: Option<Vec<u8>>,
-        // name: Option<Vec<u8>>,
-        // website: Option<Vec<u8>>,
-        // banner: Option<Vec<u8>>,
-
-        // bot:bool,
+   
     }
 
     // impl Default for NostrUser {
@@ -393,119 +302,18 @@ pub mod nostr_types {
             println!("NostrUser::from_nostr_user_into_data");
             let user = self.clone();
 
-            // let nostr_user = NostrUserData {
-            //     id: {
-            //         let mut array = [0u8; SIZE_VEC];
-            //         // match user.id {
-            //         //     Ok(id) => array.copy_from_slice(&id.as_bytes()),
-            //         //     _ => {}
-            //         // }
-            //         array.copy_from_slice(&user.id.unwrap().as_bytes());
-
-            //         array
-            //     },
-            //     pubkey: {
-            //         let mut array = [0u8; SIZE_VEC];
-            //         array.copy_from_slice(&user.pubkey.unwrap().to_owned());
-            //         array
-            //     },
-            //     display_name: {
-            //         let mut array = [0u8; MAX_SIZE_VEC];
-            //         // let display = if user.display_name.is_some() {
-            //         //     user.display_name.to_owned()
-            //         // }
-            //         if let Some(value) = user.display_name {
-            //             println!("The string is: {}", value);
-            //             array.copy_from_slice(&value.as_bytes());
-
-            //             // Perform your conversion here
-            //             let uppercase_value = value.to_uppercase();
-            //             println!("Uppercase: {}", uppercase_value);
-            //         } else {
-            //             println!("No value found.");
-            //         }
-            //         array
-            //     },
-            //     banner: {
-            //         let mut array = [0u8; MAX_SIZE_VEC];
-            //         array.copy_from_slice(&user.banner.unwrap().as_bytes());
-            //         array
-            //     },
-            //     name: {
-            //         let mut array = [0u8; MAX_SIZE_VEC];
-            //         array.copy_from_slice(&user.name.unwrap().as_bytes());
-            //         array
-            //     },
-            //     website: {
-            //         let mut array = [0u8; MAX_SIZE_VEC];
-            //         array.copy_from_slice(&user.website.unwrap().as_bytes());
-            //         array
-            //     },
-            //     nip05: {
-            //         let mut array = [0u8; MAX_SIZE_VEC];
-            //         array.copy_from_slice(&user.nip05.unwrap().as_bytes());
-            //         // array.copy_from_slice(&user.nip05);
-            //         array
-            //     },
-            //     bot: { false },
-            // };
-            // // let nostr_user = NostrUserData {
-            // //     id: {
-            // //         let mut array = [0u8; SIZE_VEC];
-            // //         array.copy_from_slice(&user.id);
-            // //         array
-            // //     },
-            // //     pubkey: {
-            // //         let mut array = [0u8; SIZE_VEC];
-            // //         array.copy_from_slice(&user.pubkey);
-            // //         array
-            // //     },
-            // //     display_name: {
-            // //         let mut array = [0u8; MAX_SIZE_VEC];
-            // //         array.copy_from_slice(&user.display_name);
-            // //         array
-            // //     },
-            // //     banner: {
-            // //         let mut array = [0u8; MAX_SIZE_VEC];
-            // //         array.copy_from_slice(&user.banner);
-            // //         array
-            // //     },
-            // //     name: {
-            // //         let mut array = [0u8; MAX_SIZE_VEC];
-            // //         array.copy_from_slice(&user.name);
-            // //         array
-            // //     },
-            // //     website: {
-            // //         let mut array = [0u8; MAX_SIZE_VEC];
-            // //         array.copy_from_slice(&user.website);
-            // //         array
-            // //     },
-            // //     nip05: {
-            // //         let mut array = [0u8; MAX_SIZE_VEC];
-            // //         array.copy_from_slice(&user.nip05);
-            // //         array
-            // //     },
-            // //     bot: { false },
-            // // };
 
             let nostr_user = NostrUserData {
                 id: {
                     let mut array = [0u8; SIZE_VEC];
-                    // match user.id {
-                    //     Ok(id) => array.copy_from_slice(&id.as_bytes()),
-                    //     _ => {}
-                    // }
+              
                     if let Some(value) = user.id {
                         println!("The string is: {}", value);
                         array.copy_from_slice(&value.as_bytes());
-                        // Perform your conversion here
-                        // let uppercase_value = value.to_uppercase();
-                        // println!("Uppercase: {}", uppercase_value);
+                 
                     } else {
                         println!("No value found.");
                     }
-                    // array.copy_from_slice(&user.id.unwrap().as_bytes());
-
                     array
                 },
                 pubkey: {
@@ -515,9 +323,6 @@ pub mod nostr_types {
                         println!("The string is: {:?}", value);
                         array.copy_from_slice(&value.to_owned());
 
-                        // Perform your conversion here
-                        // let uppercase_value = value.to_uppercase();
-                        // println!("Uppercase: {}", uppercase_value);
                     } else {
                         println!("No value found.");
                     }
@@ -525,29 +330,8 @@ pub mod nostr_types {
                     array
                 },
                 display_name: {
-                    // let display = if user.display_name.is_some() {
-                    //     user.display_name.to_owned()
-                    // }
-                    // let array = match user.display_name{
-                    //     Some(n) => {
-                    //         Some(BoundedVec::try_from(n.clone()))
-                    //     },
-                    //     // .map_err(|_| Error::<T>::ExceededMaxLength)?),
-                    //     None => {array}
-                    // };
+               
                     let mut array = [0u8; MAX_SIZE_VEC];
-
-                    // if let Some(value) = user.display_name {
-                    //     println!("The string is: {}", value);
-                    //     array.copy_from_slice(&value.as_bytes());
-
-                    //     // Perform your conversion here
-                    //     let uppercase_value = value.to_uppercase();
-                    //     println!("Uppercase: {}", uppercase_value);
-                    // } else {
-                    //     println!("No value found.");
-                    // }
-
                     if let Some(value) = user.display_name {
                         let bytes = value.as_bytes();
                         let len = bytes.len().min(MAX_SIZE_VEC); // Ensure we don't exceed the array size

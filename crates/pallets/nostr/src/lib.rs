@@ -199,7 +199,6 @@ pub mod pallet {
             log::debug!("Current block: {:?} (parent hash: {:?})", block_number, parent_hash);
             log::info!("Nostr saved event");
 
-
             // For this example we are going to send both signed and unsigned transactions
             // depending on the block number.
             // Usually it's enough to choose one or the other.
@@ -208,8 +207,10 @@ pub mod pallet {
             // Check timestamp to recall offchain worker
             // let res = match should_send {
             //     TransactionType::Signed => Self::fetch_price_and_send_signed(),
-            //     TransactionType::UnsignedForAny => Self::fetch_price_and_send_unsigned_for_any_account(block_number),
-            //     TransactionType::UnsignedForAll => Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
+            //     TransactionType::UnsignedForAny =>
+            // Self::fetch_price_and_send_unsigned_for_any_account(block_number),
+            //     TransactionType::UnsignedForAll =>
+            // Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
             //     TransactionType::Raw => Self::fetch_price_and_send_raw_unsigned(block_number),
             //     TransactionType::None => Ok(()),
             // };
@@ -217,7 +218,7 @@ pub mod pallet {
             //     log::error!("Error: {}", e);
             // }
             let now = sp_io::offchain::timestamp().unix_millis();
-            let is_need_to_fetch= Self::fetch_data_if_needed();
+            let is_need_to_fetch = Self::fetch_data_if_needed();
             log::info!("is_need_to_fetch {:?}", is_need_to_fetch);
 
             // Get data nostr for User and TextNote
@@ -299,8 +300,6 @@ pub mod pallet {
                 }
 
                 Self::set_last_fetch_time(now);
-            
-
             };
         }
     }
@@ -484,9 +483,6 @@ pub mod pallet {
                 println!("json_data {:?}", json_data);
 
                 let user: NostrUser = serde_json::from_str(content.as_str()).unwrap();
-                // let my_struct: NostrUser = serde_json::from_str(json_data).unwrap();
-                // println!("user nostr display name {:#?}", user.display_name);
-                // println!("user nostr nip05 name {:#?}", user.nip05);
 
                 let mut existing_user = NostrUsersEvents::<T>::get(pubkey.to_bytes().clone());
                 // .ok_or(Error::<T>::UserNotFound)?;
@@ -495,7 +491,6 @@ pub mod pallet {
                 //     // NostrUsersEvents::<T>::insert(pubkey.clone(), &user);
                 // }
 
-                // let new_user = user.copy();
                 let new_user = user.clone();
 
                 // let new_user_data= new_user.
@@ -524,22 +519,14 @@ pub mod pallet {
 
                 let nostr_event_data =
                     NostrEventData::from_nostr_event(&event).map_err(|_| Error::<T>::InvalidNostrEvent);
-                // NostrUsersEvents::<T>::insert(pubkey.clone(), &existing_user);
-                // NostrUsersEvents::<T>::insert(nostr_event_data.id, &existing_user);
 
                 // Store the event in the storage map
                 match nostr_event_data {
                     Ok(data) => {
-                        // NostrEvents::<T>::insert(
-                        //     &who, // nostr_event_data.clone()
-                        //     data,
-                        // );
                         println!("nostr_event_data {:?}", data.pubkey);
                         log::info!("Saved data");
-                        NostrUsersEvents::<T>::insert(pubkey.to_bytes(), &existing_user);
+                        // NostrUsersEvents::<T>::insert(pubkey.to_bytes(), &existing_user);
                         NostrUsersEvents::<T>::insert(data.pubkey, &existing_user);
-
-                        // NostrUsersEvents::<T>::insert(&data.id, &data);
                     }
                     _ => {}
                 }
@@ -547,28 +534,16 @@ pub mod pallet {
             Ok(().into())
         }
 
-
         #[pallet::call_index(6)]
         #[pallet::weight({0})]
         pub fn save_last_fetch_time(
             origin: OriginFor<T>,
-            now:u64 // event: EventNostr,
+            now: u64, // event: EventNostr,
         ) -> DispatchResultWithPostInfo {
             log::info!("save_last_fetch_time");
-            // let who = ensure_signed(origin)?;
-         
-            let times = <LastFetchTime<T>>::get();
-            // <LastFetchTime<T>>::mutate(|times| {
-            //     if times.try_push(now).is_err() {
-            //     }
-            // });
             LastFetchTime::<T>::put(now);
-            // LastFetchTime::<T>::append(now);
-            // LastFetchTime::<T>::push(now);
             Ok(().into())
         }
-
-    
     }
 
     /// Events for the pallet.
@@ -656,7 +631,6 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn last_fetch_time)]
     pub(super) type LastFetchTime<T: Config> = StorageValue<_, u64, ValueQuery>;
-    
 
     #[pallet::storage]
     #[pallet::getter(fn next_unsigned_at)]
@@ -705,7 +679,7 @@ enum TransactionType {
 impl<T: Config> Pallet<T> {
     /// Timestamp of last scraping
     ///   
-    fn fetch_data_if_needed()-> bool {
+    fn fetch_data_if_needed() -> bool {
         let now = sp_io::offchain::timestamp().unix_millis();
         let last_fetch_time = Self::last_fetch_time();
         log::info!("Now {}", now);
@@ -721,7 +695,7 @@ impl<T: Config> Pallet<T> {
             false
         }
     }
- /// Chooses which transaction type to send.
+    /// Chooses which transaction type to send.
     ///
     /// This function serves mostly to showcase `StorageValue` helper
     /// and local storage usage.
@@ -896,7 +870,7 @@ impl<T: Config> Pallet<T> {
 
         Ok(())
     }
-    fn set_last_fetch_time(now:u64) -> Result<(), &'static str> {
+    fn set_last_fetch_time(now: u64) -> Result<(), &'static str> {
         let signer = Signer::<T, T::AuthorityId>::all_accounts();
         if !signer.can_sign() {
             return Err("No local accounts available. Consider adding one via `author_insertKey` RPC.");
@@ -909,7 +883,7 @@ impl<T: Config> Pallet<T> {
             // Received price is wrapped into a call to `submit_price` public function of this
             // pallet. This means that the transaction, when executed, will simply call that
             // function passing `price` as an argument.
-            Call::save_last_fetch_time { now:now}
+            Call::save_last_fetch_time { now }
         });
 
         for (acc, res) in &results {
@@ -924,8 +898,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-
-    
     /// A helper function to fetch the price and send signed transaction.
     fn store_users_nostr_signed(events: Vec<Vec<u8>>) -> Result<(), &'static str> {
         let signer = Signer::<T, T::AuthorityId>::all_accounts();
